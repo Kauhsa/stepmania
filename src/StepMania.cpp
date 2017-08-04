@@ -70,6 +70,7 @@
 #include "Profile.h"
 #include "ActorUtil.h"
 #include "ver.h"
+#include "SyncStartManager.h"
 
 #if defined(WIN32)
 #include <windows.h>
@@ -1164,6 +1165,7 @@ int sm_main(int argc, char* argv[])
 	NSMAN 		= new NetworkSyncManager( pLoadingWindow );
 	MESSAGEMAN	= new MessageManager;
 	STATSMAN	= new StatsManager;
+	SYNCMAN		= new SyncStartManager;
 
 	// Initialize which courses are ranking courses here.
 	SONGMAN->UpdateRankingCourses();

@@ -32,6 +32,7 @@
 #include "RageInput.h"
 #include "OptionsList.h"
 #include "RageFileManager.h"
+#include "SyncStartManager.h"
 
 static const char *SelectionStateNames[] = {
 	"SelectingSong",
@@ -394,6 +395,21 @@ void ScreenSelectMusic::Update( float fDeltaTime )
 
 	ScreenWithMenuElements::Update( fDeltaTime );
 
+	std::string songPath = SYNCMAN->shouldChangeSong();
+	if (!songPath.empty()) {
+		LOG->Info("Received song '%s'", songPath.c_str());
+		Song* song = SONGMAN->FindSong(songPath);
+
+		if (song != NULL) {
+			// lol
+			m_MusicWheel.SelectSong(song);
+			m_MusicWheel.Select();
+			m_MusicWheel.Move(-1);
+			m_MusicWheel.Move(1);
+			m_MusicWheel.Select();
+		}
+	}
+
 	CheckBackgroundRequests( false );
 }
 
@@ -426,6 +442,28 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 		MESSAGEMAN->Broadcast( "DisplayLanguageChanged" );
 		m_MusicWheel.RebuildWheelItems();
 		return true;
+	}
+
+	// toggle sync manager
+	if ( input.DeviceI.device == DEVICE_KEYBOARD && input.DeviceI.button == KEY_F10 )
+	{
+		if ( input.type != IET_FIRST_PRESS )
+			return false;
+
+		if (SYNCMAN->isEnabled())
+		{
+			SYNCMAN->disable();
+			LOG->Info("Synchronized start disabled");
+			SCREENMAN->SystemMessage("Synchronized start disabled");
+			return true;
+		}
+		else
+		{
+			SYNCMAN->enable();
+			LOG->Info( "Synchronized start enabled" );
+			SCREENMAN->SystemMessage("Synchronized start enabled");
+			return true;
+		}
 	}
 
 	if( !IsTransitioning() && m_SelectionState != SelectionState_Finalized )
@@ -586,6 +624,28 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 
 	if( SELECT_MENU_AVAILABLE && input.MenuI == GAME_BUTTON_SELECT && input.type != IET_REPEAT )
 		UpdateSelectButton( input.pn, input.type == IET_FIRST_PRESS );
+
+	if (SYNCMAN->isEnabled() && m_bSelectIsDown[input.pn] && input.type == IET_FIRST_PRESS && input.MenuI == GAME_BUTTON_START) {
+		Song* selectedSong = m_MusicWheel.GetSelectedSong();
+
+		if (selectedSong != NULL) {
+			// figure out the path (don't know why there isn't a function for this)
+			RString sDir = selectedSong->GetSongDir();
+			sDir.Replace("\\","/");
+			vector<RString> bits;
+			split( sDir, "/", bits );
+			const RString &sLastBit = bits[bits.size()-1];
+			std::string songPath = selectedSong->m_sGroupName + '/' + sLastBit;
+
+			// let's broadcast it
+			LOG->Info("Broadcasting '%s'", songPath.c_str());
+			SYNCMAN->broadcastSongPath(songPath);
+
+			// avoid theme using codes that is same than this key combination
+			FOREACH_ENUM( GameController, gc )
+				INPUTQUEUE->ClearQueue(gc);
+		}
+	}
 
 	if( SELECT_MENU_AVAILABLE  &&  m_bSelectIsDown[input.pn] )
 	{

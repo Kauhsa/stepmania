@@ -339,6 +339,9 @@ protected:
 	// Apparently we just hope the server is keeping track.
 	// All we can do is guess based on what subclass we are.
 	bool m_bForceNoNetwork;
+
+	// derp
+	bool m_bWaitingForSyncStart;
 };
 
 vector<PlayerInfo>::iterator GetNextEnabledPlayerInfo		( vector<PlayerInfo>::iterator iter, vector<PlayerInfo> &v );

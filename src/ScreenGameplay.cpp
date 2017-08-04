@@ -62,6 +62,7 @@
 #include "XmlFileUtil.h"
 #include "Profile.h" // for replay data stuff
 #include "RageDisplay.h"
+#include "SyncStartManager.h"
 
 // Defines
 #define SHOW_LIFE_METER_FOR_DISABLED_PLAYERS	THEME->GetMetricB(m_sName,"ShowLifeMeterForDisabledPlayers")
@@ -326,6 +327,7 @@ ScreenGameplay::ScreenGameplay()
 	m_pSongBackground = NULL;
 	m_pSongForeground = NULL;
 	m_bForceNoNetwork = false;
+	m_bWaitingForSyncStart = false;
 	m_delaying_ready_announce= false;
 	GAMESTATE->m_AdjustTokensBySongCostForFinalStageCheck= false;
 }
@@ -652,7 +654,6 @@ void ScreenGameplay::Init()
 	// appear dead when you begin your game.
 	if( !m_bForceNoNetwork )
 		NSMAN->StartRequest(0); 
-
 
 	// Add individual life meter
 	switch( GAMESTATE->m_PlayMode )
@@ -1616,6 +1617,12 @@ void ScreenGameplay::BeginScreen()
 
 		UpdateSongPosition(0);
 	}
+	else if ( SYNCMAN->isEnabled() )
+	{
+		StartPlayingSong(0, 0);
+		m_pSoundMusic->Stop();
+		m_bWaitingForSyncStart = true;
+	}
 	else
 	{
 		StartPlayingSong( MIN_SECONDS_TO_STEP, MIN_SECONDS_TO_MUSIC );
@@ -1670,6 +1677,30 @@ void ScreenGameplay::Update( float fDeltaTime )
 		 * to make sure we receive the next-screen message. */
 		Screen::Update( fDeltaTime );
 		return;
+	}
+
+	if ( m_bWaitingForSyncStart ) {
+		if (SYNCMAN->shouldStart()) {
+			m_bWaitingForSyncStart = false;
+			SCREENMAN->HideSystemMessage();
+
+			// do shit, copied from StartPlayingSong()
+			RageSoundParams p;
+			p.m_fSpeed = GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate;
+			p.StopMode = RageSoundParams::M_CONTINUE;
+			const float fFirstSecond = GAMESTATE->m_pCurSong->GetFirstSecond();
+			float fStartDelay = MIN_SECONDS_TO_STEP - fFirstSecond;
+			fStartDelay = max( fStartDelay, (float) MIN_SECONDS_TO_MUSIC );
+			p.m_StartSecond = -fStartDelay;
+			m_pSoundMusic->Play(false, &p);
+			UpdateSongPosition(0);
+			Screen::Update(0);
+			return;
+		} else {
+			SCREENMAN->SystemMessageNoAnimate(ssprintf("Waiting for synchronized start - press START to begin on all machines!"));
+			Screen::Update(0);
+			return;
+		}
 	}
 
 	UpdateSongPosition( fDeltaTime );
@@ -2366,6 +2397,7 @@ void ScreenGameplay::SendCrossedMessages()
 
 void ScreenGameplay::BeginBackingOutFromGameplay()
 {
+	m_bWaitingForSyncStart = false;
 	m_DancingState = STATE_OUTRO;
 	ResetGiveUpTimers(false);
 
@@ -2431,6 +2463,11 @@ bool ScreenGameplay::Input( const InputEventPlus &input )
 	Message msg("");
 	if( m_Codes.InputMessage(input, msg) )
 		this->HandleMessage( msg );
+
+	if ( m_bWaitingForSyncStart && input.MenuI == GAME_BUTTON_START && input.type == IET_FIRST_PRESS ) {
+		SYNCMAN->broadcastStarting();
+		return true;
+	}
 
 	if( m_bPaused )
 	{
@@ -3118,6 +3155,7 @@ void ScreenGameplay::HandleMessage( const Message &msg )
 void ScreenGameplay::Cancel( ScreenMessage smSendWhenDone )
 {
 	m_pSoundMusic->Stop();
+	m_bWaitingForSyncStart = false;
 
 	ScreenWithMenuElements::Cancel( smSendWhenDone );
 }

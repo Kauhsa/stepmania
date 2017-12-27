@@ -424,6 +424,8 @@ void ScreenSelectMusic::Update( float fDeltaTime )
 			m_MusicWheel.Move(1);
 			m_MusicWheel.Select();
 		}
+
+		g_bSampleMusicWaiting = true;
 	}
 
 	CheckBackgroundRequests( false );
@@ -2025,7 +2027,7 @@ void ScreenSelectMusic::AfterMusicChange()
 		// some SampleMusicPreviewModes don't want the sample music immediately.
 		if( SAMPLE_MUSIC_PREVIEW_MODE != SampleMusicPreviewMode_StartToPreview )
 		{
-			if( !m_sSampleMusicToPlay.empty() )
+			if( !m_sSampleMusicToPlay.empty() && !SYNCMAN->isEnabled() )
 				g_bSampleMusicWaiting = true;
 		}
 	}

@@ -21,6 +21,7 @@
 #include "NetworkSyncManager.h"
 #include "RageTimer.h"
 #include "RageInput.h"
+#include "SyncStartManager.h"
 
 static RageTimer g_GameplayTimer;
 
@@ -273,7 +274,7 @@ void GameLoop::RunGameLoop()
 
 		if( g_fConstantUpdateDeltaSeconds > 0 )
 			fDeltaTime = g_fConstantUpdateDeltaSeconds;
-		
+
 		CheckGameLoopTimerSkips( fDeltaTime );
 
 		fDeltaTime *= g_fUpdateRate;
@@ -284,7 +285,7 @@ void GameLoop::RunGameLoop()
 		SOUNDMAN->Update();
 
 		/* Update song beat information -before- calling update on all the classes that
-		 * depend on it. If you don't do this first, the classes are all acting on old 
+		 * depend on it. If you don't do this first, the classes are all acting on old
 		 * information and will lag. (but no longer fatally, due to timestamping -glenn) */
 		SOUND->Update( fDeltaTime );
 		TEXTUREMAN->Update( fDeltaTime );
@@ -292,6 +293,7 @@ void GameLoop::RunGameLoop()
 		SCREENMAN->Update( fDeltaTime );
 		MEMCARDMAN->Update();
 		NSMAN->Update( fDeltaTime );
+		SYNCMAN->Update();
 
 		/* Important: Process input AFTER updating game logic, or input will be
 		 * acting on song beat from last frame */

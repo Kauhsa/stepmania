@@ -69,7 +69,7 @@ public:
 	{
 		if( m_bIsDummy )
 			return ssprintf("Dummy%d",m_iDummyIndex);
-		if( IsMultiPlayer() ) 
+		if( IsMultiPlayer() )
 			return MultiPlayerToString( m_mp );
 		else
 			return PlayerNumberToString( m_pn );
@@ -145,6 +145,7 @@ public:
 	virtual void Init();
 	virtual ~ScreenGameplay();
 	virtual void BeginScreen();
+	virtual void EndScreen();
 
 	virtual void Update( float fDeltaTime );
 	virtual bool Input( const InputEventPlus &input );
@@ -244,7 +245,7 @@ protected:
 	// These exist so that the haste rate isn't recalculated every time GetHasteRate is called, which is at least once per frame. -Kyz
 
 	/** @brief The different game states of ScreenGameplay. */
-	enum DancingState { 
+	enum DancingState {
 		STATE_INTRO = 0, /**< The starting state, pressing Back isn't allowed here. */
 		STATE_DANCING,	 /**< The main state where notes have to be pressed. */
 		STATE_OUTRO,	 /**< The ending state, pressing Back isn't allowed here. */
@@ -333,7 +334,7 @@ protected:
 	// announcer sound needs to be delayed.  See HandleScreenMessage for more.
 	// -Kyz
 	bool m_delaying_ready_announce;
-	
+
 	// HACK: We have no idea whether we're actually using SMOnline or not.
 	// No, seriously, NOWHERE is it stored what room we're in or whether we're in a room at all.
 	// Apparently we just hope the server is keeping track.
@@ -369,7 +370,7 @@ vector<PlayerInfo>::iterator GetNextVisiblePlayerInfo		( vector<PlayerInfo>::ite
  * @author Chris Danford, Glenn Maynard (c) 2001-2004
  * @section LICENSE
  * All rights reserved.
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
  * "Software"), to deal in the Software without restriction, including
@@ -379,7 +380,7 @@ vector<PlayerInfo>::iterator GetNextVisiblePlayerInfo		( vector<PlayerInfo>::ite
  * copyright notice(s) and this permission notice appear in all copies of
  * the Software and that both the above copyright notice(s) and this
  * permission notice appear in supporting documentation.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF

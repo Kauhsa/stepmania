@@ -65,6 +65,7 @@ static bool g_bSampleMusicWaiting = false;
 static bool g_bSyncStartSampleMusicWaiting = false;
 static RageTimer g_StartedLoadingAt(RageZeroTimer);
 static RageTimer g_ScreenStartedLoadingAt(RageZeroTimer);
+static RageTimer g_WaitForSyncStartSampleMusic(RageZeroTimer);
 RageTimer g_CanOpenOptionsList(RageZeroTimer);
 
 static LocalizedString PERMANENTLY_DELETE("ScreenSelectMusic", "PermanentlyDelete");
@@ -379,7 +380,7 @@ void ScreenSelectMusic::CheckBackgroundRequests( bool bForce )
 			return;
 
 		// Don't start the preview when syncstart is enabled and not forcing
-		if (SYNCMAN->isEnabled() && !g_bSyncStartSampleMusicWaiting) {
+		if (SYNCMAN->isEnabled() && (!g_bSyncStartSampleMusicWaiting || g_WaitForSyncStartSampleMusic.Ago() < 0.5)) {
 			return;
 		}
 
@@ -432,6 +433,7 @@ void ScreenSelectMusic::Update( float fDeltaTime )
 			m_MusicWheel.Select();
 			AfterMusicChange();
 			g_bSyncStartSampleMusicWaiting = true;
+			g_WaitForSyncStartSampleMusic.Touch();
 		}
 	}
 

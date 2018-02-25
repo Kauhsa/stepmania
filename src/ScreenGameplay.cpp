@@ -334,6 +334,7 @@ ScreenGameplay::ScreenGameplay()
 void ScreenGameplay::Init()
 {
 	SubscribeToMessage( "Judgment" );
+	SubscribeToMessage( "ScoreChanged ");
 
 	PLAYER_TYPE.Load(			m_sName, "PlayerType" );
 	PLAYER_INIT_COMMAND.Load(		m_sName, "PlayerInitCommand" );

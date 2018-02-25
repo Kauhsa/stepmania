@@ -371,11 +371,11 @@ void ScreenSelectMusic::CheckBackgroundRequests( bool bForce )
 	// Nothing else is going.  Start the music, if we haven't yet.
 	if( g_bSampleMusicWaiting )
 	{
-		if(g_ScreenStartedLoadingAt.Ago() < SAMPLE_MUSIC_DELAY_INIT)
+		if(!SYNCMAN->isEnabled() && g_ScreenStartedLoadingAt.Ago() < SAMPLE_MUSIC_DELAY_INIT)
 			return;
 
 		// Don't start the music sample when moving fast.
-		if( g_StartedLoadingAt.Ago() < SAMPLE_MUSIC_DELAY && !bForce )
+		if(!SYNCMAN->isEnabled() && g_StartedLoadingAt.Ago() < SAMPLE_MUSIC_DELAY && !bForce )
 			return;
 
 		// Don't start the preview when syncstart is enabled and not forcing

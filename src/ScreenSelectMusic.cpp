@@ -61,6 +61,7 @@ static bool g_bCDTitleWaiting = false;
 static RString g_sBannerPath;
 static bool g_bBannerWaiting = false;
 static bool g_bSampleMusicWaiting = false;
+static bool g_bSyncStartSampleMusicWaiting = false;
 static RageTimer g_StartedLoadingAt(RageZeroTimer);
 static RageTimer g_ScreenStartedLoadingAt(RageZeroTimer);
 RageTimer g_CanOpenOptionsList(RageZeroTimer);
@@ -361,6 +362,12 @@ void ScreenSelectMusic::CheckBackgroundRequests( bool bForce )
 		if( g_StartedLoadingAt.Ago() < SAMPLE_MUSIC_DELAY && !bForce )
 			return;
 
+		// Don't start the preview when syncstart is enabled and not forcing
+		if (SYNCMAN->isEnabled() && !g_bSyncStartSampleMusicWaiting) {
+			return;
+		}
+
+		g_bSyncStartSampleMusicWaiting = false;
 		g_bSampleMusicWaiting = false;
 
 		GameSoundManager::PlayMusicParams PlayParams;
@@ -407,6 +414,8 @@ void ScreenSelectMusic::Update( float fDeltaTime )
 			m_MusicWheel.Move(-1);
 			m_MusicWheel.Move(1);
 			m_MusicWheel.Select();
+			AfterMusicChange();
+			g_bSyncStartSampleMusicWaiting = true;
 		}
 	}
 

@@ -2101,6 +2101,7 @@
 			<EnumValue name='&apos;CourseSortOrders_Meter&apos;' value='2'/>
 			<EnumValue name='&apos;CourseSortOrders_MeterSum&apos;' value='3'/>
 			<EnumValue name='&apos;CourseSortOrders_MeterRank&apos;' value='4'/>
+			<EnumValue name='&apos;CourseSortOrders_Title&apos;' value='5'/>
 		</Enum>
 		<Enum name='CourseType'>
 			<EnumValue name='&apos;CourseType_Nonstop&apos;' value='0'/>

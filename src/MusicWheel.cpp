@@ -820,6 +820,9 @@ void MusicWheel::BuildWheelItemDatas( vector<MusicWheelItemData *> &arrayWheelIt
 
 			switch( PREFSMAN->m_CourseSortOrder )
 			{
+				case COURSE_SORT_TITLE:
+					CourseUtil::SortCoursePointerArrayByTitle( apCourses );
+					break;
 				case COURSE_SORT_SONGS:
 					CourseUtil::SortCoursePointerArrayByDifficulty( apCourses );
 					break;

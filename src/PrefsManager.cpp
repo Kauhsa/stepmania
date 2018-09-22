@@ -114,6 +114,7 @@ static const char *CourseSortOrdersNames[] = {
 	"Meter",
 	"MeterSum",
 	"MeterRank",
+	"Title"
 };
 XToString( CourseSortOrders );
 StringToX( CourseSortOrders );

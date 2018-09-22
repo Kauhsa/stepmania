@@ -1003,6 +1003,10 @@ RageColor Course::GetColor() const
 		else if( m_SortOrder_Ranking == 2 )	return SORT_LEVEL3_COLOR;
 		else if( m_SortOrder_Ranking == 1 )	return SORT_LEVEL5_COLOR;
 		else					return SORT_LEVEL4_COLOR;
+
+	case COURSE_SORT_TITLE:
+		return SORT_LEVEL1_COLOR; // anything goes in case of title
+
 	default:
 		FAIL_M( ssprintf("Invalid course sort %d.", int(PREFSMAN->m_CourseSortOrder)) );
 		return RageColor(1,1,1,1);  // white; should never reach here

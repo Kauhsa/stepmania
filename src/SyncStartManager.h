@@ -11,7 +11,7 @@ class SyncStartManager
 private:
 	int socketfd;
 	bool enabled;
-	void broadcast(std::string msg);
+	void broadcast(char code, std::string msg);
 	int getNextMessage(char* buffer, sockaddr_in* remaddr, size_t bufferSize);
 
 	bool waitingForSongChanges;

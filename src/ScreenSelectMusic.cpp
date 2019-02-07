@@ -672,7 +672,6 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			std::string songPath = selectedSong->m_sGroupName + '/' + sLastBit;
 
 			// let's broadcast it
-			LOG->Info("Broadcasting '%s'", songPath.c_str());
 			SYNCMAN->broadcastSongPath(songPath);
 
 			// avoid theme using codes that is same than this key combination

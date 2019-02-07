@@ -25,9 +25,9 @@ SyncStartManager *SYNCMAN;
 
 // opcodes
 
-#define START 'S'
-#define SONG 'W'
-#define SCORE 'C'
+#define START 0x00
+#define SONG 0x01
+#define SCORE 0x02
 
 SyncStartManager::SyncStartManager()
 {
@@ -68,7 +68,7 @@ void SyncStartManager::enable()
 	this->enabled = true;
 }
 
-void SyncStartManager::broadcast(std::string msg) {
+void SyncStartManager::broadcast(char code, std::string msg) {
 	if (!this->enabled) {
 		return;
 	}
@@ -77,26 +77,30 @@ void SyncStartManager::broadcast(std::string msg) {
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(PORT);
 	addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+	
+	// first byte is code, rest is the message
+	char buffer[BUFSIZE];
+	buffer[0] = code;
+	std::size_t length = msg.copy(buffer + 1, BUFSIZE - 1, 0);
 
-	const char* content = msg.c_str();
+	LOG->Info("BROADCASTING: code %d, msg: '%s'", code, msg.c_str());
 
-	if (sendto(this->socketfd, content, msg.size(), 0, (struct sockaddr *) &addr, sizeof(addr)) == -1) {
+	if (sendto(this->socketfd, &buffer, length + 1, 0, (struct sockaddr *) &addr, sizeof(addr)) == -1) {
 		return;
 	}
 }
 
 void SyncStartManager::broadcastStarting()
 {
-	this->broadcast(std::string(1, START));
+	this->broadcast(START, "");
 }
 
 void SyncStartManager::broadcastSongPath(std::string songPath) {
-	this->broadcast(std::string(1, SONG) + songPath);
+	this->broadcast(SONG, songPath);
 }
 
 void SyncStartManager::broadcastScoreChange(std::string playerName, PlayerNumber pn, float scorePercentage) {
-	LOG->Info("Broadcasting: %s %s %f", playerName.c_str(), PlayerNumberToString(pn).c_str(), scorePercentage);
-	this->broadcast(std::string(1, SCORE) + "|" + playerName + "|" + PlayerNumberToString(pn) + "|" + std::to_string(scorePercentage)); // lol
+	this->broadcast(SCORE, playerName + "|" + PlayerNumberToString(pn) + "|" + std::to_string(scorePercentage)); // lol
 }
 
 void SyncStartManager::disable()
@@ -130,8 +134,10 @@ void SyncStartManager::Update() {
 		received = getNextMessage(buffer, &remaddr, sizeof(buffer));
 		if (received > 0) {
 			char opcode = buffer[0];
+			std::string msg = std::string(buffer + 1, received - 1);
+
 			if (opcode == SONG && this->waitingForSongChanges) {
-				this->songWaitingToBeChangedTo = std::string(buffer + 1, received - 1);
+				this->songWaitingToBeChangedTo = msg;
 			} else if (opcode == START && this->waitingForSynchronizedStarting) {
 				this->shouldStart = true;
 			} else if (opcode == SCORE) {

@@ -10,17 +10,26 @@ private:
 	bool enabled;
 	void broadcast(std::string msg);
 	int getNextMessage(char* buffer, size_t bufferSize);
+
+	bool waitingForSongChanges;
+	std::string songWaitingToBeChangedTo;
+
+	bool waitingForSynchronizedStarting;
+	bool shouldStart;
 public:
 	SyncStartManager();
 	~SyncStartManager();
 	bool isEnabled();
 	void enable();
 	void disable();
-	void cleanup();
 	void broadcastStarting();
 	void broadcastSongPath(std::string songPath);
-	std::string shouldChangeSong();
-	bool shouldStart();
+
+	void Update();
+	void ListenForSongChanges(bool enabled);
+	std::string ShouldChangeSong();
+	void ListenForSynchronizedStarting(bool enabled);
+	bool ShouldStart();
 };
 
 extern SyncStartManager *SYNCMAN;

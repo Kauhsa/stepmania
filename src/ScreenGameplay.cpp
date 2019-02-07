@@ -1618,6 +1618,7 @@ void ScreenGameplay::BeginScreen()
 	}
 	else if ( SYNCMAN->isEnabled() )
 	{
+		SYNCMAN->ListenForSynchronizedStarting(true);
 		StartPlayingSong(0, 0);
 		m_pSoundMusic->Stop();
 		m_bWaitingForSyncStart = true;
@@ -1626,6 +1627,11 @@ void ScreenGameplay::BeginScreen()
 	{
 		StartPlayingSong( MIN_SECONDS_TO_STEP, MIN_SECONDS_TO_MUSIC );
 	}
+}
+
+void ScreenGameplay::EndScreen()
+{
+	SYNCMAN->ListenForSynchronizedStarting(false);
 }
 
 bool ScreenGameplay::AllAreFailing()
@@ -1679,7 +1685,7 @@ void ScreenGameplay::Update( float fDeltaTime )
 	}
 
 	if ( m_bWaitingForSyncStart ) {
-		if (SYNCMAN->shouldStart()) {
+		if (SYNCMAN->ShouldStart()) {
 			m_bWaitingForSyncStart = false;
 			SCREENMAN->HideSystemMessage();
 
@@ -1696,7 +1702,7 @@ void ScreenGameplay::Update( float fDeltaTime )
 			Screen::Update(0);
 			return;
 		} else {
-			SCREENMAN->SystemMessageNoAnimate(ssprintf("Waiting for synchronized start - press START to begin on all machines!"));
+			SCREENMAN->SystemMessageNoAnimate("Waiting for synchronized start - press START to begin on all machines!");
 			Screen::Update(0);
 			return;
 		}

@@ -296,7 +296,14 @@ void ScreenSelectMusic::BeginScreen()
 
 	SOUND->PlayOnceFromAnnouncer( "select music intro" );
 
+	SYNCMAN->ListenForSongChanges(true);
+
 	ScreenWithMenuElements::BeginScreen();
+}
+
+void ScreenSelectMusic::EndScreen()
+{
+	SYNCMAN->ListenForSongChanges(false);
 }
 
 ScreenSelectMusic::~ScreenSelectMusic()
@@ -419,7 +426,7 @@ void ScreenSelectMusic::Update( float fDeltaTime )
 
 	ScreenWithMenuElements::Update( fDeltaTime );
 
-	std::string songPath = SYNCMAN->shouldChangeSong();
+	std::string songPath = SYNCMAN->ShouldChangeSong();
 	if (!songPath.empty()) {
 		LOG->Info("Received song '%s'", songPath.c_str());
 		Song* song = SONGMAN->FindSong(songPath);

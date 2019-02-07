@@ -53,6 +53,12 @@ void SyncStartManager::enable()
 	addr.sin_port = htons(PORT);
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
+	// we need to be able to broadcast through this socket
+	int broadcast = 1;
+	if (setsockopt(this->socketfd, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) == -1) {
+		return;
+	}
+
 	if (bind(this->socketfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		return;
 	}
@@ -65,16 +71,6 @@ void SyncStartManager::broadcast(std::string msg) {
 		return;
 	}
 
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (fd == -1) {
-		return;
-	}
-
-	int broadcast = 1;
-	if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) == -1) {
-	    return;
-	}
-
 	struct sockaddr_in addr;
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(PORT);
@@ -82,12 +78,9 @@ void SyncStartManager::broadcast(std::string msg) {
 
 	const char* content = msg.c_str();
 
-	if (sendto(fd, content, msg.size(), 0, (struct sockaddr *) &addr, sizeof(addr)) == -1) {
+	if (sendto(this->socketfd, content, msg.size(), 0, (struct sockaddr *) &addr, sizeof(addr)) == -1) {
 		return;
 	}
-
-	shutdown(fd, SHUT_RDWR);
-	close(fd);
 }
 
 void SyncStartManager::broadcastStarting()
@@ -117,43 +110,49 @@ int SyncStartManager::getNextMessage(char* buffer, size_t bufferSize) {
 	return recvfrom(this->socketfd, buffer, bufferSize, MSG_DONTWAIT, (struct sockaddr *) &remaddr, &addrlen);
 }
 
-std::string SyncStartManager::shouldChangeSong()
-{
+void SyncStartManager::Update() {
 	if (!this->enabled) {
-		return "";
+		return;
 	}
 
 	char buffer[BUFSIZE];
 	int received;
 
-	// loop through packets, ignoring everything other than song change
+	// loop through packets received
 	do {
 		received = getNextMessage(buffer, sizeof(buffer));
-		if (received > 0 && buffer[0] == SONG) {
-			return std::string(buffer + 1, received - 1);
+		if (received > 0) {
+			char opcode = buffer[0];
+			if (opcode == SONG && this->waitingForSongChanges) {
+				this->songWaitingToBeChangedTo = std::string(buffer + 1, received - 1);
+			}
+			if (opcode == START && this->waitingForSynchronizedStarting) {
+				this->shouldStart = true;
+			}
 		}
 	} while (received > 0);
-
-	return "";
 }
 
-bool SyncStartManager::shouldStart()
-{
-	if (!this->enabled) {
-		return true;
-	}
+void SyncStartManager::ListenForSongChanges(bool enabled) {
+	LOG->Info("Listen for song changes: %d", enabled);
+	this->waitingForSongChanges = enabled;
+	this->songWaitingToBeChangedTo = "";
+}
 
-	// care only about first byte here, so discard rest
-	char buffer[1];
-	int received;
+std::string SyncStartManager::ShouldChangeSong() {
+	std::string song = this->songWaitingToBeChangedTo;
+	this->songWaitingToBeChangedTo = "";
+	return song;
+}
 
-	// loop through packets, ignoring everything else until we hit start message
-	do {
-		received = getNextMessage(buffer, sizeof(buffer));
-		if (received > 0 && buffer[0] == START) {
-			return true;
-		}
-	} while (received > 0);
+void SyncStartManager::ListenForSynchronizedStarting(bool enabled) {
+	LOG->Info("Listen for synchronized starting: %d", enabled);
+	this->waitingForSynchronizedStarting = enabled;
+	this->shouldStart = false;
+}
 
-	return false;
+bool SyncStartManager::ShouldStart() {
+	bool shouldStart = this->shouldStart;
+	this->shouldStart = false;
+	return shouldStart;
 }

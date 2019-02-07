@@ -20,6 +20,7 @@
 #include "Song.h"
 #include "TimingData.h"
 #include "NoteDataWithScoring.h"
+#include "SyncStartManager.h"
 
 static RString PercentScoreWeightName( size_t i ) { return "PercentScoreWeight" + ScoreEventToString( (ScoreEvent)i ); }
 static RString GradeWeightName( size_t i ) { return "GradeWeight" + ScoreEventToString( (ScoreEvent)i ); }
@@ -607,6 +608,7 @@ void ScoreKeeperNormal::HandleTapRowScore( const NoteData &nd, int iRow )
 			m_pPlayerStageStats->m_iScore,
 			m_pPlayerStageStats->m_iCurCombo, offset );
 	Message msg( "ScoreChanged" );
+	SYNCMAN->broadcastScoreChange(PROFILEMAN->GetPlayerName(pn), pn, m_pPlayerStageStats->GetPercentDancePoints());
 	msg.SetParam( "PlayerNumber", m_pPlayerState->m_PlayerNumber );
 	msg.SetParam( "MultiPlayer", m_pPlayerState->m_mp );
 	msg.SetParam( "ToastyCombo", m_cur_toasty_combo );

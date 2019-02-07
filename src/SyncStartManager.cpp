@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <sys/socket.h>
 #include <string>
 #include <algorithm>
 
@@ -16,6 +15,8 @@
 #include "ScreenManager.h"
 #include "SongManager.h"
 #include "ScreenSelectMusic.h"
+#include "PlayerNumber.h"
+#include "RageLog.h"
 
 SyncStartManager *SYNCMAN;
 
@@ -26,6 +27,7 @@ SyncStartManager *SYNCMAN;
 
 #define START 'S'
 #define SONG 'W'
+#define SCORE 'C'
 
 SyncStartManager::SyncStartManager()
 {
@@ -89,7 +91,12 @@ void SyncStartManager::broadcastStarting()
 }
 
 void SyncStartManager::broadcastSongPath(std::string songPath) {
-	this->broadcast(SONG + songPath);
+	this->broadcast(std::string(1, SONG) + songPath);
+}
+
+void SyncStartManager::broadcastScoreChange(std::string playerName, PlayerNumber pn, float scorePercentage) {
+	LOG->Info("Broadcasting: %s %s %f", playerName.c_str(), PlayerNumberToString(pn).c_str(), scorePercentage);
+	this->broadcast(std::string(1, SCORE) + "|" + playerName + "|" + PlayerNumberToString(pn) + "|" + std::to_string(scorePercentage)); // lol
 }
 
 void SyncStartManager::disable()
@@ -103,8 +110,7 @@ void SyncStartManager::disable()
 	this->enabled = false;
 }
 
-int SyncStartManager::getNextMessage(char* buffer, size_t bufferSize) {
-	struct sockaddr_in remaddr;
+int SyncStartManager::getNextMessage(char* buffer, sockaddr_in* remaddr, size_t bufferSize) {
 	socklen_t addrlen = sizeof remaddr;
 	ssize_t received;
 	return recvfrom(this->socketfd, buffer, bufferSize, MSG_DONTWAIT, (struct sockaddr *) &remaddr, &addrlen);
@@ -117,17 +123,19 @@ void SyncStartManager::Update() {
 
 	char buffer[BUFSIZE];
 	int received;
+	struct sockaddr_in remaddr;
 
 	// loop through packets received
 	do {
-		received = getNextMessage(buffer, sizeof(buffer));
+		received = getNextMessage(buffer, &remaddr, sizeof(buffer));
 		if (received > 0) {
 			char opcode = buffer[0];
 			if (opcode == SONG && this->waitingForSongChanges) {
 				this->songWaitingToBeChangedTo = std::string(buffer + 1, received - 1);
-			}
-			if (opcode == START && this->waitingForSynchronizedStarting) {
+			} else if (opcode == START && this->waitingForSynchronizedStarting) {
 				this->shouldStart = true;
+			} else if (opcode == SCORE) {
+				//
 			}
 		}
 	} while (received > 0);

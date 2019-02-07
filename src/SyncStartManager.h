@@ -2,6 +2,9 @@
 #define SRC_SYNCSTARTMANAGER_H_
 
 #include <string>
+#include <arpa/inet.h>
+
+#include "PlayerNumber.h"
 
 class SyncStartManager
 {
@@ -9,7 +12,7 @@ private:
 	int socketfd;
 	bool enabled;
 	void broadcast(std::string msg);
-	int getNextMessage(char* buffer, size_t bufferSize);
+	int getNextMessage(char* buffer, sockaddr_in* remaddr, size_t bufferSize);
 
 	bool waitingForSongChanges;
 	std::string songWaitingToBeChangedTo;
@@ -24,6 +27,7 @@ public:
 	void disable();
 	void broadcastStarting();
 	void broadcastSongPath(std::string songPath);
+	void broadcastScoreChange(std::string playerName, PlayerNumber pn, float scorePercentage);
 
 	void Update();
 	void ListenForSongChanges(bool enabled);

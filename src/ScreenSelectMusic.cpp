@@ -285,8 +285,15 @@ void ScreenSelectMusic::BeginScreen()
 	AfterMusicChange();
 
 	SOUND->PlayOnceFromAnnouncer( "select music intro" );
+	SYNCMAN->StopListeningScoreChanges();
+	SYNCMAN->ListenForSongChanges(true);
 
 	ScreenWithMenuElements::BeginScreen();
+}
+
+void ScreenSelectMusic::EndScreen()
+{
+	SYNCMAN->ListenForSongChanges(false);
 }
 
 ScreenSelectMusic::~ScreenSelectMusic()
@@ -407,15 +414,27 @@ void ScreenSelectMusic::Update( float fDeltaTime )
 	}
 
 	ScreenWithMenuElements::Update( fDeltaTime );
+	std::string songOrCoursePath = SYNCMAN->GetSongOrCourseToChangeTo();
+	if (!songOrCoursePath.empty()) {
+		LOG->Info("Received song/course '%s'", songOrCoursePath.c_str());
+		bool changed = false;
 
-	std::string songPath = SYNCMAN->shouldChangeSong();
-	if (!songPath.empty()) {
-		LOG->Info("Received song '%s'", songPath.c_str());
-		Song* song = SONGMAN->FindSong(songPath);
+		if (GAMESTATE->IsCourseMode()) {
+			Course* course = SONGMAN->FindCourse(songOrCoursePath);
+			if (course != NULL) {
+				changed = m_MusicWheel.SelectCourse(course);
+			}
+		} else {
+			Song* song = SONGMAN->FindSong(songOrCoursePath);
+			if (song != NULL) {
+				changed = m_MusicWheel.SelectSong(song);
+			}
+		}
 
-		if (song != NULL) {
+		if (changed) {
+			LOG->Info("Found received song/course from music wheel");
+
 			// lol
-			m_MusicWheel.SelectSong(song);
 			m_MusicWheel.Select();
 			m_MusicWheel.Move(-1);
 			m_MusicWheel.Move(1);
@@ -471,6 +490,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			SYNCMAN->disable();
 			LOG->Info("Synchronized start disabled");
 			SCREENMAN->SystemMessage("Synchronized start disabled");
+			g_bSampleMusicWaiting = true;
 			return true;
 		}
 		else
@@ -478,6 +498,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			SYNCMAN->enable();
 			LOG->Info( "Synchronized start enabled" );
 			SCREENMAN->SystemMessage("Synchronized start enabled");
+			SOUND->StopMusic();
 			return true;
 		}
 	}
@@ -642,25 +663,21 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 		UpdateSelectButton( input.pn, input.type == IET_FIRST_PRESS );
 
 	if (SYNCMAN->isEnabled() && m_bSelectIsDown[input.pn] && input.type == IET_FIRST_PRESS && input.MenuI == GAME_BUTTON_START) {
-		Song* selectedSong = m_MusicWheel.GetSelectedSong();
-
-		if (selectedSong != NULL) {
-			// figure out the path (don't know why there isn't a function for this)
-			RString sDir = selectedSong->GetSongDir();
-			sDir.Replace("\\","/");
-			vector<RString> bits;
-			split( sDir, "/", bits );
-			const RString &sLastBit = bits[bits.size()-1];
-			std::string songPath = selectedSong->m_sGroupName + '/' + sLastBit;
-
-			// let's broadcast it
-			LOG->Info("Broadcasting '%s'", songPath.c_str());
-			SYNCMAN->broadcastSongPath(songPath);
-
-			// avoid theme using codes that is same than this key combination
-			FOREACH_ENUM( GameController, gc )
-				INPUTQUEUE->ClearQueue(gc);
+		if (GAMESTATE->IsCourseMode()) {
+			Course* selectedCourse = m_MusicWheel.GetSelectedCourse();
+			if (selectedCourse != NULL) {
+				SYNCMAN->broadcastSelectedCourse(*selectedCourse);
+			}
+		} else {
+			Song* selectedSong = m_MusicWheel.GetSelectedSong();
+			if (selectedSong != NULL) {
+				SYNCMAN->broadcastSelectedSong(*selectedSong);
+			}
 		}
+
+		// avoid theme using codes that is same than this key combination
+		FOREACH_ENUM( GameController, gc )
+			INPUTQUEUE->ClearQueue(gc);
 	}
 
 	if( SELECT_MENU_AVAILABLE  &&  m_bSelectIsDown[input.pn] )

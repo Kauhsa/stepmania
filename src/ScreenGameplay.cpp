@@ -1396,6 +1396,10 @@ void ScreenGameplay::LoadNextSong()
 	}
 
 	MESSAGEMAN->Broadcast("DoneLoadingNextSong");
+
+	if (SYNCMAN->isEnabled() && pSong != NULL) {
+		SYNCMAN->SongChangedDuringGameplay(*pSong);
+	}
 }
 
 void ScreenGameplay::LoadLights()
@@ -1590,7 +1594,6 @@ void ScreenGameplay::BeginScreen()
 		return;
 
 	ScreenWithMenuElements::BeginScreen();
-
 	SOUND->PlayOnceFromAnnouncer( "gameplay intro" );	// crowd cheer
 
 	// Get the transitions rolling
@@ -1616,8 +1619,9 @@ void ScreenGameplay::BeginScreen()
 
 		UpdateSongPosition(0);
 	}
-	else if ( SYNCMAN->isEnabled() )
+	else if ( SYNCMAN->isEnabled() && GAMESTATE->m_pCurSong != NULL )
 	{
+		SYNCMAN->StartListeningForSynchronizedStart(*GAMESTATE->m_pCurSong);
 		StartPlayingSong(0, 0);
 		m_pSoundMusic->Stop();
 		m_bWaitingForSyncStart = true;
@@ -1626,6 +1630,11 @@ void ScreenGameplay::BeginScreen()
 	{
 		StartPlayingSong( MIN_SECONDS_TO_STEP, MIN_SECONDS_TO_MUSIC );
 	}
+}
+
+void ScreenGameplay::EndScreen()
+{
+	SYNCMAN->StopListeningForSynchronizedStart();
 }
 
 bool ScreenGameplay::AllAreFailing()
@@ -1679,7 +1688,7 @@ void ScreenGameplay::Update( float fDeltaTime )
 	}
 
 	if ( m_bWaitingForSyncStart ) {
-		if (SYNCMAN->shouldStart()) {
+		if (SYNCMAN->AttemptStart()) {
 			m_bWaitingForSyncStart = false;
 			SCREENMAN->HideSystemMessage();
 
@@ -1694,9 +1703,14 @@ void ScreenGameplay::Update( float fDeltaTime )
 			m_pSoundMusic->Play(false, &p);
 			UpdateSongPosition(0);
 			Screen::Update(0);
+
+			// send initial score
+			FOREACH_EnabledPlayerInfo( m_vPlayerInfo, pi ) {
+				SYNCMAN->broadcastScoreChange(*pi->GetPlayerStageStats());
+			}
 			return;
 		} else {
-			SCREENMAN->SystemMessageNoAnimate(ssprintf("Waiting for synchronized start - press START to begin on all machines!"));
+			SCREENMAN->SystemMessageNoAnimate("Waiting for synchronized start - press START to begin on all machines!");
 			Screen::Update(0);
 			return;
 		}

@@ -2648,7 +2648,7 @@ void Player::UpdateJudgedRows()
 
 	if (shouldBroadcastScoreChange) {
 		const int noteRow = BeatToNoteRow(m_Timing->GetBeatFromElapsedTime( m_pPlayerState->m_Position.m_fMusicSeconds));
-		SYNCMAN->broadcastScoreChange(noteRow, m_pPlayerStageStats);
+		SYNCMAN->broadcastScoreChange(noteRow, *m_pPlayerStageStats);
 	}
 }
 

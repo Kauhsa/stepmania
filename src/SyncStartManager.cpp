@@ -30,6 +30,10 @@ SyncStartManager *SYNCMAN;
 #define SONG 0x01
 #define SCORE 0x02
 
+bool operator<(const ScoreKey& l, const ScoreKey& r) {
+	return l.machineAddress.s_addr < r.machineAddress.s_addr && l.playerNumber < r.playerNumber && l.playerName < r.playerName;
+}
+
 SyncStartManager::SyncStartManager()
 {
 	this->socketfd = -1;
@@ -100,16 +104,56 @@ void SyncStartManager::broadcastSongPath(std::string songPath) {
 	this->broadcast(SONG, songPath);
 }
 
-void SyncStartManager::broadcastScoreChange(int noteRow, const PlayerStageStats *pPlayerStageStats) {
-	std::string msg = PROFILEMAN->GetPlayerName(pPlayerStageStats->m_player_number)
+void SyncStartManager::broadcastScoreChange(int noteRow, const PlayerStageStats& pPlayerStageStats) {
+	std::string msg = PROFILEMAN->GetPlayerName(pPlayerStageStats.m_player_number)
 		+ '|'
 		+ std::to_string(noteRow)
 		+ '|'
-		+ std::to_string(pPlayerStageStats->GetPercentDancePoints())
+		+ std::to_string((int) (pPlayerStageStats.GetPercentDancePoints() * 10000))
 		+ '|'
-		+ std::to_string(pPlayerStageStats->GetCurrentLife());
+		+ std::to_string(pPlayerStageStats.GetCurrentLife());
 
 	this->broadcast(SCORE, msg); 
+}
+
+void SyncStartManager::receiveScoreChange(struct in_addr in_addr, const std::string& msg) {
+	size_t last = 0;
+	size_t next = 0;
+	int i = 0;
+
+	ScoreKey scoreKey = {
+		.machineAddress = in_addr
+	};
+	ScoreValue scoreValue;
+
+	while ((next = msg.find('|', last)) != string::npos) {
+		std:string value = msg.substr(last, next - last);
+
+		if (i == 0) {
+			scoreKey.playerName = value;
+		} else if (i == 1) {
+			// noterow, ignore for now
+		} else if (i == 2) {
+			try {
+				scoreValue.score = std::stoi(value);
+			} catch (std::invalid_argument& e) {
+				scoreValue.score = 0;
+			}
+		}
+
+		last = next + 1;
+		i++;
+	}
+
+	std::string value = msg.substr(last); 
+	
+	try {
+		scoreValue.life = std::stof(value);
+	} catch (std::invalid_argument& e) {
+		scoreValue.life = 0;
+	}
+
+	playerScores[scoreKey] = scoreValue;
 }
 
 void SyncStartManager::disable()
@@ -126,7 +170,7 @@ void SyncStartManager::disable()
 int SyncStartManager::getNextMessage(char* buffer, sockaddr_in* remaddr, size_t bufferSize) {
 	socklen_t addrlen = sizeof remaddr;
 	ssize_t received;
-	return recvfrom(this->socketfd, buffer, bufferSize, MSG_DONTWAIT, (struct sockaddr *) &remaddr, &addrlen);
+	return recvfrom(this->socketfd, buffer, bufferSize, MSG_DONTWAIT, (struct sockaddr *) remaddr, &addrlen);
 }
 
 void SyncStartManager::Update() {
@@ -150,10 +194,15 @@ void SyncStartManager::Update() {
 			} else if (opcode == START && this->waitingForSynchronizedStarting) {
 				this->shouldStart = true;
 			} else if (opcode == SCORE) {
-				//
+				this->receiveScoreChange(remaddr.sin_addr, msg);
 			}
 		}
 	} while (received > 0);
+
+	for (std::map<ScoreKey, ScoreValue>::iterator i = playerScores.begin(); i != playerScores.end(); i++) {
+		LOG->Info("%s %s %d %d %f", inet_ntoa(i->first.machineAddress), i->first.playerName.c_str(), i->first.playerNumber, i->second.score, i->second.life); 
+	}
+	LOG->Info("");
 }
 
 void SyncStartManager::ListenForSongChanges(bool enabled) {

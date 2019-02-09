@@ -7,6 +7,20 @@
 #include "PlayerNumber.h"
 #include "PlayerStageStats.h"
 
+struct ScoreKey {
+	struct in_addr machineAddress;
+	PlayerNumber playerNumber;
+	std::string playerName;
+
+};
+
+bool operator<(const ScoreKey& l, const ScoreKey& r);
+
+struct ScoreValue {
+	int score;
+	float life;
+};
+
 class SyncStartManager
 {
 private:
@@ -20,6 +34,8 @@ private:
 
 	bool waitingForSynchronizedStarting;
 	bool shouldStart;
+
+	std::map<ScoreKey, ScoreValue> playerScores;
 public:
 	SyncStartManager();
 	~SyncStartManager();
@@ -28,7 +44,8 @@ public:
 	void disable();
 	void broadcastStarting();
 	void broadcastSongPath(std::string songPath);
-	void broadcastScoreChange(int noteRow, const PlayerStageStats *pPlayerStageStats);
+	void broadcastScoreChange(int noteRow, const PlayerStageStats& pPlayerStageStats);
+	void receiveScoreChange(struct in_addr in_addr, const std::string& msg);
 
 	void Update();
 	void ListenForSongChanges(bool enabled);

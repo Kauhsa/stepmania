@@ -16,6 +16,7 @@
 #include "SongManager.h"
 #include "ScreenSelectMusic.h"
 #include "PlayerNumber.h"
+#include "ProfileManager.h"
 #include "RageLog.h"
 
 SyncStartManager *SYNCMAN;
@@ -99,8 +100,16 @@ void SyncStartManager::broadcastSongPath(std::string songPath) {
 	this->broadcast(SONG, songPath);
 }
 
-void SyncStartManager::broadcastScoreChange(std::string playerName, PlayerNumber pn, float scorePercentage) {
-	this->broadcast(SCORE, playerName + "|" + PlayerNumberToString(pn) + "|" + std::to_string(scorePercentage)); // lol
+void SyncStartManager::broadcastScoreChange(int noteRow, const PlayerStageStats *pPlayerStageStats) {
+	std::string msg = PROFILEMAN->GetPlayerName(pPlayerStageStats->m_player_number)
+		+ '|'
+		+ std::to_string(noteRow)
+		+ '|'
+		+ std::to_string(pPlayerStageStats->GetPercentDancePoints())
+		+ '|'
+		+ std::to_string(pPlayerStageStats->GetCurrentLife());
+
+	this->broadcast(SCORE, msg); 
 }
 
 void SyncStartManager::disable()

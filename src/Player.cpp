@@ -41,6 +41,7 @@
 #include "GameCommand.h"
 #include "LocalizedString.h"
 #include "AdjustSync.h"
+#include "SyncStartManager.h"
 
 RString ATTACK_DISPLAY_X_NAME( size_t p, size_t both_sides );
 void TimingWindowSecondsInit( size_t /*TimingWindow*/ i, RString &sNameOut, float &defaultValueOut );
@@ -2493,6 +2494,8 @@ void Player::UpdateTapNotesMissedOlderThan( float fMissIfOlderThanSeconds )
 
 void Player::UpdateJudgedRows()
 {
+	bool shouldBroadcastScoreChange = false;
+
 	// Look ahead far enough to catch any rows judged early.
 	const int iEndRow = BeatToNoteRow( m_Timing->GetBeatFromElapsedTime( m_pPlayerState->m_Position.m_fMusicSeconds + GetMaxStepDistanceSeconds() ) );
 	bool bAllJudged = true;
@@ -2543,6 +2546,7 @@ void Player::UpdateJudgedRows()
 					SetJudgment( iRow, m_NoteData.GetFirstTrackWithTapOrHoldHead(iRow), NoteDataWithScoring::LastTapNoteWithResult( m_NoteData, iRow ) );
 				}
 				HandleTapRowScore( iRow );
+				shouldBroadcastScoreChange = true;
 			}
 		}
 	}
@@ -2625,6 +2629,7 @@ void Player::UpdateJudgedRows()
 			if( m_pSecondaryScoreKeeper )
 				m_pSecondaryScoreKeeper->HandleTapScore( tn );
 			tn.result.bHidden = true;
+			shouldBroadcastScoreChange = true;
 		}
 		// If we hit the end of the loop, m_pIterUnjudgedMineRows needs to be
 		// updated. -Kyz
@@ -2639,6 +2644,11 @@ void Player::UpdateJudgedRows()
 			(*s)->Stop();
 			(*s)->Play(false);
 		}
+	}
+
+	if (shouldBroadcastScoreChange) {
+		const int noteRow = BeatToNoteRow(m_Timing->GetBeatFromElapsedTime( m_pPlayerState->m_Position.m_fMusicSeconds));
+		SYNCMAN->broadcastScoreChange(noteRow, m_pPlayerStageStats);
 	}
 }
 

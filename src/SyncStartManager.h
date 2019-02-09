@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 
 #include "PlayerNumber.h"
+#include "PlayerStageStats.h"
 
 class SyncStartManager
 {
@@ -27,7 +28,7 @@ public:
 	void disable();
 	void broadcastStarting();
 	void broadcastSongPath(std::string songPath);
-	void broadcastScoreChange(std::string playerName, PlayerNumber pn, float scorePercentage);
+	void broadcastScoreChange(int noteRow, const PlayerStageStats *pPlayerStageStats);
 
 	void Update();
 	void ListenForSongChanges(bool enabled);

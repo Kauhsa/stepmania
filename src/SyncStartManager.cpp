@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string>
 #include <algorithm>
+#include <sstream>
+#include <iomanip>
 
 #include "global.h"
 #include "SyncStartManager.h"
@@ -31,11 +33,24 @@ SyncStartManager *SYNCMAN;
 #define SCORE 0x02
 
 bool operator<(const ScoreKey& l, const ScoreKey& r) {
-	return l.machineAddress.s_addr < r.machineAddress.s_addr && l.playerNumber < r.playerNumber && l.playerName < r.playerName;
+	return l.machineAddress.s_addr < r.machineAddress.s_addr || l.playerNumber < r.playerNumber || l.playerName < r.playerName;
+}
+
+bool sortScorePairs(const std::pair<ScoreKey, ScoreValue>& l, const std::pair<ScoreKey, ScoreValue>& r) {
+	return r.second.score < l.second.score;
 }
 
 SyncStartManager::SyncStartManager()
 {
+	// Register with Lua.
+	{
+		Lua *L = LUA->Get();
+		lua_pushstring( L, "SYNCMAN" );
+		this->PushSelf( L );
+		lua_settable(L, LUA_GLOBALSINDEX);
+		LUA->Release( L );
+	}	
+
 	this->socketfd = -1;
 	this->enabled = false;
 }
@@ -198,11 +213,17 @@ void SyncStartManager::Update() {
 			}
 		}
 	} while (received > 0);
+}
 
-	for (std::map<ScoreKey, ScoreValue>::iterator i = playerScores.begin(); i != playerScores.end(); i++) {
-		LOG->Info("%s %s %d %d %f", inet_ntoa(i->first.machineAddress), i->first.playerName.c_str(), i->first.playerNumber, i->second.score, i->second.life); 
+std::vector<std::pair<ScoreKey, ScoreValue>> SyncStartManager::getPlayerScores() {
+	std::vector<std::pair<ScoreKey, ScoreValue>> result;
+
+	for (auto i = playerScores.begin(); i != playerScores.end(); i++) {
+		result.push_back(*i);
 	}
-	LOG->Info("");
+
+	std::sort(result.begin(), result.end(), sortScorePairs);
+	return result;
 }
 
 void SyncStartManager::ListenForSongChanges(bool enabled) {
@@ -228,3 +249,44 @@ bool SyncStartManager::ShouldStart() {
 	this->shouldStart = false;
 	return shouldStart;
 }
+
+// lua start
+#include "LuaBinding.h"
+
+class LunaSyncStartManager: public Luna<SyncStartManager> {
+	public:
+		static int GetCurrentPlayerScores( T* p, lua_State *L )
+		{
+			auto scores = p->getPlayerScores();
+			lua_newtable( L );
+			int outer_table_index = lua_gettop(L);
+
+			int i = 0;
+			for (auto score = scores.begin(); score != scores.end(); score++) {
+				lua_newtable( L );
+				int inner_table_index = lua_gettop(L);
+				
+				lua_pushstring(L, "playerName");
+				lua_pushstring(L, score->first.playerName.c_str());
+				lua_settable(L, inner_table_index);
+				
+				stringstream stream;
+				stream << fixed << setprecision(2) << (score->second.score / 100.0); 
+				lua_pushstring(L, "score");
+				lua_pushstring(L, stream.str().c_str());
+				lua_settable(L, inner_table_index);
+				
+				lua_rawseti(L, outer_table_index, i + 1);
+				i++;
+			}
+
+			return 1;
+		}
+
+		LunaSyncStartManager()
+		{
+			ADD_METHOD( GetCurrentPlayerScores );
+		}
+};
+
+LUA_REGISTER_CLASS( SyncStartManager )

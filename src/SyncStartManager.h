@@ -18,6 +18,9 @@ bool operator<(const ScoreKey& l, const ScoreKey& r);
 struct ScoreValue {
 	int score;
 	float life;
+	bool failed;
+	int tapNoteScores[NUM_TapNoteScore];
+	int holdNoteScores[NUM_HoldNoteScore];
 };
 
 class SyncStartManager

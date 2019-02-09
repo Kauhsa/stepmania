@@ -40,6 +40,22 @@ bool sortScorePairs(const std::pair<ScoreKey, ScoreValue>& l, const std::pair<Sc
 	return r.second.score < l.second.score;
 }
 
+std::vector<std::string> split(const std::string& str, const std::string& delim)
+{
+    std::vector<std::string> tokens;
+    size_t prev = 0, pos = 0;
+    do
+    {
+        pos = str.find(delim, prev);
+        if (pos == std::string::npos) pos = str.length();
+        std::string token = str.substr(prev, pos-prev);
+        if (!token.empty()) tokens.push_back(token);
+        prev = pos + delim.length();
+    }
+    while (pos < str.length() && prev < str.length());
+    return tokens;
+}
+
 SyncStartManager::SyncStartManager()
 {
 	// Register with Lua.
@@ -120,55 +136,54 @@ void SyncStartManager::broadcastSongPath(std::string songPath) {
 }
 
 void SyncStartManager::broadcastScoreChange(int noteRow, const PlayerStageStats& pPlayerStageStats) {
-	std::string msg = PROFILEMAN->GetPlayerName(pPlayerStageStats.m_player_number)
-		+ '|'
-		+ std::to_string(noteRow)
-		+ '|'
-		+ std::to_string((int) (pPlayerStageStats.GetPercentDancePoints() * 10000))
-		+ '|'
-		+ std::to_string(pPlayerStageStats.GetCurrentLife());
+	stringstream msg;
 
-	this->broadcast(SCORE, msg); 
+	msg << PROFILEMAN->GetPlayerName(pPlayerStageStats.m_player_number) << '|';
+	msg << noteRow << '|';
+	msg << (int) (pPlayerStageStats.GetPercentDancePoints() * 10000) << '|';
+	msg << pPlayerStageStats.GetCurrentLife() << '|';
+	msg << (pPlayerStageStats.m_bFailed ? '1' : '0') << '|';
+
+	for (int i = 0; i < NUM_TapNoteScore; ++i) {
+		msg << pPlayerStageStats.m_iTapNoteScores[i] << '|';
+	}
+
+	for (int i = 0; i < NUM_HoldNoteScore; ++i) {
+		msg << pPlayerStageStats.m_iHoldNoteScores[i] << '|';
+	}
+
+	this->broadcast(SCORE, msg.str()); 
 }
 
 void SyncStartManager::receiveScoreChange(struct in_addr in_addr, const std::string& msg) {
-	size_t last = 0;
-	size_t next = 0;
-	int i = 0;
-
 	ScoreKey scoreKey = {
 		.machineAddress = in_addr
 	};
+
 	ScoreValue scoreValue;
 
-	while ((next = msg.find('|', last)) != string::npos) {
-		std:string value = msg.substr(last, next - last);
+	try {
+		auto items = split(msg, "|");
+		auto iter = items.begin();
+		scoreKey.playerName = *iter++;
+		iter++; // noterow, ignore for now
+		scoreValue.score = std::stoi(*iter++);
+		scoreValue.life = std::stof(*iter++);
+		scoreValue.failed = *iter++ == "1" ? true : false;
 
-		if (i == 0) {
-			scoreKey.playerName = value;
-		} else if (i == 1) {
-			// noterow, ignore for now
-		} else if (i == 2) {
-			try {
-				scoreValue.score = std::stoi(value);
-			} catch (std::invalid_argument& e) {
-				scoreValue.score = 0;
-			}
+		for (int i = 0; i < NUM_TapNoteScore; ++i) {
+			scoreValue.tapNoteScores[i] = std::stoi(*iter++);
 		}
 
-		last = next + 1;
-		i++;
-	}
+		for (int i = 0; i < NUM_HoldNoteScore; ++i) {
+			scoreValue.holdNoteScores[i] = std::stoi(*iter++);
+		}
 
-	std::string value = msg.substr(last); 
-	
-	try {
-		scoreValue.life = std::stof(value);
-	} catch (std::invalid_argument& e) {
-		scoreValue.life = 0;
+		playerScores[scoreKey] = scoreValue;
+	} catch (std::exception& e) {
+		LOG->Warn("Could not parse score change '%s'", msg);
+		// do nothing, just don't crash!
 	}
-
-	playerScores[scoreKey] = scoreValue;
 }
 
 void SyncStartManager::disable()

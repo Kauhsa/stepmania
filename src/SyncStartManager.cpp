@@ -140,7 +140,7 @@ void SyncStartManager::broadcastScoreChange(int noteRow, const PlayerStageStats&
 
 	msg << PROFILEMAN->GetPlayerName(pPlayerStageStats.m_player_number) << '|';
 	msg << noteRow << '|';
-	msg << (int) (pPlayerStageStats.GetPercentDancePoints() * 10000) << '|';
+	msg << pPlayerStageStats.GetPercentDancePoints() << '|';
 	msg << pPlayerStageStats.GetCurrentLife() << '|';
 	msg << (pPlayerStageStats.m_bFailed ? '1' : '0') << '|';
 
@@ -167,7 +167,7 @@ void SyncStartManager::receiveScoreChange(struct in_addr in_addr, const std::str
 		auto iter = items.begin();
 		scoreKey.playerName = *iter++;
 		iter++; // noterow, ignore for now
-		scoreValue.score = std::stoi(*iter++);
+		scoreValue.score = std::stof(*iter++);
 		scoreValue.life = std::stof(*iter++);
 		scoreValue.failed = *iter++ == "1" ? true : false;
 
@@ -180,6 +180,8 @@ void SyncStartManager::receiveScoreChange(struct in_addr in_addr, const std::str
 		}
 
 		playerScores[scoreKey] = scoreValue;
+
+		MESSAGEMAN->Broadcast("SyncStartPlayerScoresChanged");
 	} catch (std::exception& e) {
 		LOG->Warn("Could not parse score change '%s'", msg);
 		// do nothing, just don't crash!
@@ -284,11 +286,9 @@ class LunaSyncStartManager: public Luna<SyncStartManager> {
 				lua_pushstring(L, "playerName");
 				lua_pushstring(L, score->first.playerName.c_str());
 				lua_settable(L, inner_table_index);
-				
-				stringstream stream;
-				stream << fixed << setprecision(2) << (score->second.score / 100.0); 
+ 
 				lua_pushstring(L, "score");
-				lua_pushstring(L, stream.str().c_str());
+				lua_pushnumber(L, score->second.score);
 				lua_settable(L, inner_table_index);
 				
 				lua_rawseti(L, outer_table_index, i + 1);

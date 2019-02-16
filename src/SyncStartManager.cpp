@@ -20,6 +20,7 @@
 #include "PlayerNumber.h"
 #include "ProfileManager.h"
 #include "RageLog.h"
+#include "GameState.h"
 
 SyncStartManager *SYNCMAN;
 
@@ -32,28 +33,27 @@ SyncStartManager *SYNCMAN;
 #define SONG 0x01
 #define SCORE 0x02
 
-bool operator<(const ScoreKey& l, const ScoreKey& r) {
-	return l.machineAddress.s_addr < r.machineAddress.s_addr || l.playerNumber < r.playerNumber || l.playerName < r.playerName;
+std::vector<std::string> split(const std::string& str, const std::string& delim) {
+	std::vector<std::string> tokens;
+	size_t prev = 0, pos = 0;
+	do
+	{
+		pos = str.find(delim, prev);
+		if (pos == std::string::npos) pos = str.length();
+		std::string token = str.substr(prev, pos-prev);
+		if (!token.empty()) tokens.push_back(token);
+		prev = pos + delim.length();
+	}
+	while (pos < str.length() && prev < str.length());
+	return tokens;
 }
 
-bool sortScorePairs(const std::pair<ScoreKey, ScoreValue>& l, const std::pair<ScoreKey, ScoreValue>& r) {
-	return r.second.score < l.second.score;
-}
-
-std::vector<std::string> split(const std::string& str, const std::string& delim)
-{
-    std::vector<std::string> tokens;
-    size_t prev = 0, pos = 0;
-    do
-    {
-        pos = str.find(delim, prev);
-        if (pos == std::string::npos) pos = str.length();
-        std::string token = str.substr(prev, pos-prev);
-        if (!token.empty()) tokens.push_back(token);
-        prev = pos + delim.length();
-    }
-    while (pos < str.length() && prev < str.length());
-    return tokens;
+std::string SongToString(const Song& song) {
+	RString sDir = song.GetSongDir();
+	sDir.Replace("\\","/");
+	vector<RString> bits;
+	split(sDir, "/", bits);
+	return song.m_sGroupName + '/' + *bits.rbegin();
 }
 
 SyncStartManager::SyncStartManager()
@@ -119,7 +119,9 @@ void SyncStartManager::broadcast(char code, std::string msg) {
 	buffer[0] = code;
 	std::size_t length = msg.copy(buffer + 1, BUFSIZE - 1, 0);
 
-	LOG->Info("BROADCASTING: code %d, msg: '%s'", code, msg.c_str());
+	#ifdef DEBUG
+		LOG->Info("BROADCASTING: code %d, msg: '%s'", code, msg.c_str());
+	#endif
 
 	if (sendto(this->socketfd, &buffer, length + 1, 0, (struct sockaddr *) &addr, sizeof(addr)) == -1) {
 		return;
@@ -128,16 +130,20 @@ void SyncStartManager::broadcast(char code, std::string msg) {
 
 void SyncStartManager::broadcastStarting()
 {
-	this->broadcast(START, "");
+	if (!this->activeSyncStartSong.empty()) {
+		this->broadcast(START, this->activeSyncStartSong);
+	}
 }
 
-void SyncStartManager::broadcastSongPath(std::string songPath) {
-	this->broadcast(SONG, songPath);
+void SyncStartManager::broadcastSongPath(Song& song) {
+	this->broadcast(SONG, SongToString(song));
 }
 
 void SyncStartManager::broadcastScoreChange(int noteRow, const PlayerStageStats& pPlayerStageStats) {
 	stringstream msg;
 
+	msg << this->activeSyncStartSong << '|';
+	msg << (int) pPlayerStageStats.m_player_number << '|';
 	msg << PROFILEMAN->GetPlayerName(pPlayerStageStats.m_player_number) << '|';
 	msg << noteRow << '|';
 	msg << pPlayerStageStats.GetPercentDancePoints() << '|';
@@ -156,35 +162,48 @@ void SyncStartManager::broadcastScoreChange(int noteRow, const PlayerStageStats&
 }
 
 void SyncStartManager::receiveScoreChange(struct in_addr in_addr, const std::string& msg) {
-	ScoreKey scoreKey = {
+	if (this->activeSyncStartSong.empty()) {
+		return;
+	}
+	
+	ScorePlayer scorePlayer = {
 		.machineAddress = in_addr
 	};
 
-	ScoreValue scoreValue;
+	ScoreData scoreData;
+	int noteRow;
 
 	try {
-		auto items = split(msg, "|");
+		vector<std::string> items = split(msg, "|");
 		auto iter = items.begin();
-		scoreKey.playerName = *iter++;
-		iter++; // noterow, ignore for now
-		scoreValue.score = std::stof(*iter++);
-		scoreValue.life = std::stof(*iter++);
-		scoreValue.failed = *iter++ == "1" ? true : false;
+
+		// ignore scores for other than current song
+		std::string& songName = *iter++;
+		if (songName != this->activeSyncStartSong) {
+			return;
+		}
+
+		scorePlayer.playerNumber = (PlayerNumber) std::stoi(*iter++); 
+		scorePlayer.playerName = *iter++;
+		noteRow = std::stoi(*iter++);
+		scoreData.score = std::stof(*iter++);
+		scoreData.life = std::stof(*iter++);
+		scoreData.failed = *iter++ == "1" ? true : false;
 
 		for (int i = 0; i < NUM_TapNoteScore; ++i) {
-			scoreValue.tapNoteScores[i] = std::stoi(*iter++);
+			scoreData.tapNoteScores[i] = std::stoi(*iter++);
 		}
 
 		for (int i = 0; i < NUM_HoldNoteScore; ++i) {
-			scoreValue.holdNoteScores[i] = std::stoi(*iter++);
+			scoreData.holdNoteScores[i] = std::stoi(*iter++);
 		}
 
-		playerScores[scoreKey] = scoreValue;
-
-		MESSAGEMAN->Broadcast("SyncStartPlayerScoresChanged");
+		if (this->syncStartScoreKeeper.AddScore(scorePlayer, noteRow, scoreData)) {
+			MESSAGEMAN->Broadcast("SyncStartPlayerScoresChanged");
+		}
 	} catch (std::exception& e) {
+		// just don't crash!
 		LOG->Warn("Could not parse score change '%s'", msg);
-		// do nothing, just don't crash!
 	}
 }
 
@@ -224,7 +243,9 @@ void SyncStartManager::Update() {
 			if (opcode == SONG && this->waitingForSongChanges) {
 				this->songWaitingToBeChangedTo = msg;
 			} else if (opcode == START && this->waitingForSynchronizedStarting) {
-				this->shouldStart = true;
+				if (msg == activeSyncStartSong) {
+					this->shouldStart = true;
+				}
 			} else if (opcode == SCORE) {
 				this->receiveScoreChange(remaddr.sin_addr, msg);
 			}
@@ -232,15 +253,12 @@ void SyncStartManager::Update() {
 	} while (received > 0);
 }
 
-std::vector<std::pair<ScoreKey, ScoreValue>> SyncStartManager::getPlayerScores() {
-	std::vector<std::pair<ScoreKey, ScoreValue>> result;
+std::vector<SyncStartScore> SyncStartManager::GetCurrentPlayerScores() {
+	return this->syncStartScoreKeeper.GetScores(false);
+}
 
-	for (auto i = playerScores.begin(); i != playerScores.end(); i++) {
-		result.push_back(*i);
-	}
-
-	std::sort(result.begin(), result.end(), sortScorePairs);
-	return result;
+std::vector<SyncStartScore> SyncStartManager::GetLatestPlayerScores() {
+	return this->syncStartScoreKeeper.GetScores(true);
 }
 
 void SyncStartManager::ListenForSongChanges(bool enabled) {
@@ -250,21 +268,41 @@ void SyncStartManager::ListenForSongChanges(bool enabled) {
 }
 
 std::string SyncStartManager::ShouldChangeSong() {
-	std::string song = this->songWaitingToBeChangedTo;
-	this->songWaitingToBeChangedTo = "";
-	return song;
+	auto& songToBeChangedTo = this->songWaitingToBeChangedTo;
+
+	if (!songToBeChangedTo.empty()) {
+		this->songWaitingToBeChangedTo = {};
+		return songToBeChangedTo;
+	} else {
+		return "";
+	}
 }
 
-void SyncStartManager::ListenForSynchronizedStarting(bool enabled) {
-	LOG->Info("Listen for synchronized starting: %d", enabled);
-	this->waitingForSynchronizedStarting = enabled;
+void SyncStartManager::StartListeningForSynchronizedStart(const Song& song) {
+	this->syncStartScoreKeeper.ResetScores();
+	this->activeSyncStartSong = SongToString(song);
 	this->shouldStart = false;
+	this->waitingForSynchronizedStarting = true;
 }
 
-bool SyncStartManager::ShouldStart() {
+void SyncStartManager::StopListeningForSynchronizedStart() {
+	this->shouldStart = false;
+	this->waitingForSynchronizedStarting = false;
+}
+
+bool SyncStartManager::AttemptStart() {
 	bool shouldStart = this->shouldStart;
 	this->shouldStart = false;
 	return shouldStart;
+}
+
+void SyncStartManager::SongChangedDuringGameplay(const Song& song) {
+	this->syncStartScoreKeeper.ResetButKeepScores();
+	this->activeSyncStartSong = SongToString(song);
+}
+
+void SyncStartManager::StopListeningScoreChanges() {
+	this->activeSyncStartSong = "";
 }
 
 // lua start
@@ -272,9 +310,8 @@ bool SyncStartManager::ShouldStart() {
 
 class LunaSyncStartManager: public Luna<SyncStartManager> {
 	public:
-		static int GetCurrentPlayerScores( T* p, lua_State *L )
+		static void PushScores( T* p, lua_State *L, const std::vector<SyncStartScore>& scores )
 		{
-			auto scores = p->getPlayerScores();
 			lua_newtable( L );
 			int outer_table_index = lua_gettop(L);
 
@@ -284,23 +321,43 @@ class LunaSyncStartManager: public Luna<SyncStartManager> {
 				int inner_table_index = lua_gettop(L);
 				
 				lua_pushstring(L, "playerName");
-				lua_pushstring(L, score->first.playerName.c_str());
+				lua_pushstring(L, score->player.playerName.c_str());
 				lua_settable(L, inner_table_index);
  
 				lua_pushstring(L, "score");
-				lua_pushnumber(L, score->second.score);
+				lua_pushnumber(L, score->data.score);
 				lua_settable(L, inner_table_index);
 				
 				lua_rawseti(L, outer_table_index, i + 1);
 				i++;
 			}
+		}
 
+		static int IsEnabled( T* p, lua_State *L )
+		{
+			lua_pushboolean(L, p->isEnabled());
+			return 1;
+		}
+
+		static int GetCurrentPlayerScores( T* p, lua_State *L )
+		{
+			auto scores = p->GetCurrentPlayerScores();
+			PushScores(p, L, scores);
+			return 1;
+		}
+
+		static int GetLatestPlayerScores( T* p, lua_State *L )
+		{
+			auto scores = p->GetLatestPlayerScores();
+			PushScores(p, L, scores);
 			return 1;
 		}
 
 		LunaSyncStartManager()
 		{
+			ADD_METHOD( IsEnabled );
 			ADD_METHOD( GetCurrentPlayerScores );
+			ADD_METHOD( GetLatestPlayerScores );
 		}
 };
 

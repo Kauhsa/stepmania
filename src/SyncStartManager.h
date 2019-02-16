@@ -6,22 +6,8 @@
 
 #include "PlayerNumber.h"
 #include "PlayerStageStats.h"
-
-struct ScoreKey {
-	struct in_addr machineAddress;
-	PlayerNumber playerNumber;
-	std::string playerName;
-};
-
-bool operator<(const ScoreKey& l, const ScoreKey& r);
-
-struct ScoreValue {
-	float score;
-	float life;
-	bool failed;
-	int tapNoteScores[NUM_TapNoteScore];
-	int holdNoteScores[NUM_HoldNoteScore];
-};
+#include "SyncStartScoreKeeper.h"
+#include "Song.h"
 
 class SyncStartManager
 {
@@ -33,11 +19,11 @@ private:
 
 	bool waitingForSongChanges;
 	std::string songWaitingToBeChangedTo;
-
 	bool waitingForSynchronizedStarting;
+	std::string activeSyncStartSong;
 	bool shouldStart;
 
-	std::map<ScoreKey, ScoreValue> playerScores;
+	SyncStartScoreKeeper syncStartScoreKeeper;
 public:
 	SyncStartManager();
 	~SyncStartManager();
@@ -45,16 +31,19 @@ public:
 	void enable();
 	void disable();
 	void broadcastStarting();
-	void broadcastSongPath(std::string songPath);
+	void broadcastSongPath(Song& song);
 	void broadcastScoreChange(int noteRow, const PlayerStageStats& pPlayerStageStats);
 	void receiveScoreChange(struct in_addr in_addr, const std::string& msg);
-	std::vector<std::pair<ScoreKey, ScoreValue>> getPlayerScores();
-
+	std::vector<SyncStartScore> GetCurrentPlayerScores();
+	std::vector<SyncStartScore> GetLatestPlayerScores();
 	void Update();
 	void ListenForSongChanges(bool enabled);
 	std::string ShouldChangeSong();
-	void ListenForSynchronizedStarting(bool enabled);
-	bool ShouldStart();
+	void StartListeningForSynchronizedStart(const Song& song);
+	void StopListeningForSynchronizedStart();
+	bool AttemptStart();
+	void StopListeningScoreChanges();
+	void SongChangedDuringGameplay(const Song& song);
 
 	// Lua
 	void PushSelf( lua_State *L );

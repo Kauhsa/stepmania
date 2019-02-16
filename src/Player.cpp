@@ -2494,7 +2494,7 @@ void Player::UpdateTapNotesMissedOlderThan( float fMissIfOlderThanSeconds )
 
 void Player::UpdateJudgedRows()
 {
-	bool shouldBroadcastScoreChange = false;
+	int noteRowToBroadcast = -1;
 
 	// Look ahead far enough to catch any rows judged early.
 	const int iEndRow = BeatToNoteRow( m_Timing->GetBeatFromElapsedTime( m_pPlayerState->m_Position.m_fMusicSeconds + GetMaxStepDistanceSeconds() ) );
@@ -2546,7 +2546,7 @@ void Player::UpdateJudgedRows()
 					SetJudgment( iRow, m_NoteData.GetFirstTrackWithTapOrHoldHead(iRow), NoteDataWithScoring::LastTapNoteWithResult( m_NoteData, iRow ) );
 				}
 				HandleTapRowScore( iRow );
-				shouldBroadcastScoreChange = true;
+				noteRowToBroadcast = std::max(noteRowToBroadcast, iRow);
 			}
 		}
 	}
@@ -2587,9 +2587,11 @@ void Player::UpdateJudgedRows()
 			case TNS_AvoidMine:
 				SetMineJudgment( tn.result.tns , iter.Track() );
 				tn.result.bHidden= true;
+				noteRowToBroadcast = std::max(noteRowToBroadcast, iRow);
 				continue;
 			case TNS_HitMine:
 				SetMineJudgment( tn.result.tns , iter.Track() );
+				noteRowToBroadcast = std::max(noteRowToBroadcast, iRow);
 				break;
 			}
 			if( m_pNoteField )
@@ -2629,7 +2631,6 @@ void Player::UpdateJudgedRows()
 			if( m_pSecondaryScoreKeeper )
 				m_pSecondaryScoreKeeper->HandleTapScore( tn );
 			tn.result.bHidden = true;
-			shouldBroadcastScoreChange = true;
 		}
 		// If we hit the end of the loop, m_pIterUnjudgedMineRows needs to be
 		// updated. -Kyz
@@ -2646,9 +2647,8 @@ void Player::UpdateJudgedRows()
 		}
 	}
 
-	if (shouldBroadcastScoreChange) {
-		const int noteRow = BeatToNoteRow(m_Timing->GetBeatFromElapsedTime( m_pPlayerState->m_Position.m_fMusicSeconds));
-		SYNCMAN->broadcastScoreChange(noteRow, *m_pPlayerStageStats);
+	if (noteRowToBroadcast >= 0) {
+		SYNCMAN->broadcastScoreChange(noteRowToBroadcast, *m_pPlayerStageStats);
 	}
 }
 

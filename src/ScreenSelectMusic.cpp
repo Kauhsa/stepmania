@@ -295,7 +295,7 @@ void ScreenSelectMusic::BeginScreen()
 	AfterMusicChange();
 
 	SOUND->PlayOnceFromAnnouncer( "select music intro" );
-
+	SYNCMAN->StopListeningScoreChanges();
 	SYNCMAN->ListenForSongChanges(true);
 
 	ScreenWithMenuElements::BeginScreen();
@@ -663,16 +663,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 		Song* selectedSong = m_MusicWheel.GetSelectedSong();
 
 		if (selectedSong != NULL) {
-			// figure out the path (don't know why there isn't a function for this)
-			RString sDir = selectedSong->GetSongDir();
-			sDir.Replace("\\","/");
-			vector<RString> bits;
-			split( sDir, "/", bits );
-			const RString &sLastBit = bits[bits.size()-1];
-			std::string songPath = selectedSong->m_sGroupName + '/' + sLastBit;
-
-			// let's broadcast it
-			SYNCMAN->broadcastSongPath(songPath);
+			SYNCMAN->broadcastSongPath(*selectedSong);
 
 			// avoid theme using codes that is same than this key combination
 			FOREACH_ENUM( GameController, gc )

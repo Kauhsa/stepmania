@@ -815,6 +815,9 @@ void Player::Update( float fDeltaTime )
 	if( !m_bLoaded )
 		return;
 
+	// -1 means that we're not going to update anything.
+	this->m_iNoteRowToBroadcastThisUpdate = -1;
+
 	//LOG->Trace( "Player::Update(%f)", fDeltaTime );
 
 	if( GAMESTATE->m_pCurSong==NULL || IsOniDead() )
@@ -1091,6 +1094,10 @@ void Player::Update( float fDeltaTime )
 	}
 	// process transforms that are waiting to be applied
 	ApplyWaitingTransforms();
+
+	if (m_iNoteRowToBroadcastThisUpdate >= 0 && SYNCMAN->isEnabled() && m_pPlayerStageStats) {
+		SYNCMAN->broadcastScoreChange(m_iNoteRowToBroadcastThisUpdate, *m_pPlayerStageStats);
+	}
 }
 
 // Update a group of holds with shared scoring/life. All of these holds will have the same start row.
@@ -1482,6 +1489,7 @@ void Player::UpdateHoldNotes( int iSongRow, float fDeltaTime, vector<TrackRowTap
 		TapNote &tn = *vTN[0].pTN;
 		SetHoldJudgment( tn, iFirstTrackWithMaxEndRow );
 		HandleHoldScore( tn );
+		m_iNoteRowToBroadcastThisUpdate = std::max(m_iNoteRowToBroadcastThisUpdate, iMaxEndRow);
 		//LOG->Trace("hold result = %s",StringConversion::ToString(tn.HoldResult.hns).c_str());
 	}
 	//LOG->Trace("[Player::UpdateHoldNotes] ends");
@@ -1929,6 +1937,8 @@ void Player::ScoreAllActiveHoldsLetGo()
 					tn.HoldResult.fLife = 0;
 
 					SetHoldJudgment( tn, iTrack );
+					// TODO: holds let go don't really have an applicable note row, so... let's go with "iStartCheckingAt" 
+					m_iNoteRowToBroadcastThisUpdate = std::max(m_iNoteRowToBroadcastThisUpdate, iStartCheckingAt);
 					HandleHoldScore( tn );
 				}
 			}
@@ -2494,8 +2504,6 @@ void Player::UpdateTapNotesMissedOlderThan( float fMissIfOlderThanSeconds )
 
 void Player::UpdateJudgedRows()
 {
-	int noteRowToBroadcast = -1;
-
 	// Look ahead far enough to catch any rows judged early.
 	const int iEndRow = BeatToNoteRow( m_Timing->GetBeatFromElapsedTime( m_pPlayerState->m_Position.m_fMusicSeconds + GetMaxStepDistanceSeconds() ) );
 	bool bAllJudged = true;
@@ -2546,7 +2554,7 @@ void Player::UpdateJudgedRows()
 					SetJudgment( iRow, m_NoteData.GetFirstTrackWithTapOrHoldHead(iRow), NoteDataWithScoring::LastTapNoteWithResult( m_NoteData, iRow ) );
 				}
 				HandleTapRowScore( iRow );
-				noteRowToBroadcast = std::max(noteRowToBroadcast, iRow);
+				m_iNoteRowToBroadcastThisUpdate = std::max(m_iNoteRowToBroadcastThisUpdate, iRow);
 			}
 		}
 	}
@@ -2587,11 +2595,11 @@ void Player::UpdateJudgedRows()
 			case TNS_AvoidMine:
 				SetMineJudgment( tn.result.tns , iter.Track() );
 				tn.result.bHidden= true;
-				noteRowToBroadcast = std::max(noteRowToBroadcast, iRow);
+				m_iNoteRowToBroadcastThisUpdate = std::max(m_iNoteRowToBroadcastThisUpdate, iRow);
 				continue;
 			case TNS_HitMine:
 				SetMineJudgment( tn.result.tns , iter.Track() );
-				noteRowToBroadcast = std::max(noteRowToBroadcast, iRow);
+				m_iNoteRowToBroadcastThisUpdate = std::max(m_iNoteRowToBroadcastThisUpdate, iRow);
 				break;
 			}
 			if( m_pNoteField )
@@ -2645,10 +2653,6 @@ void Player::UpdateJudgedRows()
 			(*s)->Stop();
 			(*s)->Play(false);
 		}
-	}
-
-	if (noteRowToBroadcast >= 0) {
-		SYNCMAN->broadcastScoreChange(noteRowToBroadcast, *m_pPlayerStageStats);
 	}
 }
 

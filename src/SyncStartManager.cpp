@@ -33,15 +33,19 @@ SyncStartManager *SYNCMAN;
 #define SONG 0x01
 #define SCORE 0x02
 
+#define MISC_ITEMS_LENGTH 7
+#define ALL_ITEMS_LENGTH (MISC_ITEMS_LENGTH + NUM_TapNoteScore + NUM_HoldNoteScore)
+
 std::vector<std::string> split(const std::string& str, const std::string& delim) {
 	std::vector<std::string> tokens;
+	tokens.reserve(ALL_ITEMS_LENGTH);
 	size_t prev = 0, pos = 0;
 	do
 	{
 		pos = str.find(delim, prev);
 		if (pos == std::string::npos) pos = str.length();
 		std::string token = str.substr(prev, pos-prev);
-		if (!token.empty()) tokens.push_back(token);
+		tokens.push_back(token);
 		prev = pos + delim.length();
 	}
 	while (pos < str.length() && prev < str.length());
@@ -142,9 +146,14 @@ void SyncStartManager::broadcastSongPath(Song& song) {
 void SyncStartManager::broadcastScoreChange(int noteRow, const PlayerStageStats& pPlayerStageStats) {
 	stringstream msg;
 
+	std::string playerName = PROFILEMAN->GetPlayerName(pPlayerStageStats.m_player_number);
+	if (playerName.empty()) {
+		playerName = "NoName";
+	}
+
 	msg << this->activeSyncStartSong << '|';
 	msg << (int) pPlayerStageStats.m_player_number << '|';
-	msg << PROFILEMAN->GetPlayerName(pPlayerStageStats.m_player_number) << '|';
+	msg << playerName << '|';
 	msg << noteRow << '|';
 	msg << pPlayerStageStats.GetPercentDancePoints() << '|';
 	msg << pPlayerStageStats.GetCurrentLife() << '|';
@@ -155,7 +164,10 @@ void SyncStartManager::broadcastScoreChange(int noteRow, const PlayerStageStats&
 	}
 
 	for (int i = 0; i < NUM_HoldNoteScore; ++i) {
-		msg << pPlayerStageStats.m_iHoldNoteScores[i] << '|';
+		msg << pPlayerStageStats.m_iHoldNoteScores[i];
+		if (i != NUM_HoldNoteScore - 1) {
+			msg << '|';
+		}
 	}
 
 	this->broadcast(SCORE, msg.str()); 
@@ -175,6 +187,12 @@ void SyncStartManager::receiveScoreChange(struct in_addr in_addr, const std::str
 
 	try {
 		vector<std::string> items = split(msg, "|");
+		
+		// ignore messages that don't fit the size the message should be
+		if (items.size() != ALL_ITEMS_LENGTH) {
+			return;
+		}
+
 		auto iter = items.begin();
 
 		// ignore scores for other than current song

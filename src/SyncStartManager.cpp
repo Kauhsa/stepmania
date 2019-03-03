@@ -268,10 +268,10 @@ void SyncStartManager::ListenForSongChanges(bool enabled) {
 }
 
 std::string SyncStartManager::ShouldChangeSong() {
-	auto& songToBeChangedTo = this->songWaitingToBeChangedTo;
+	std::string songToBeChangedTo = this->songWaitingToBeChangedTo;
 
 	if (!songToBeChangedTo.empty()) {
-		this->songWaitingToBeChangedTo = {};
+		this->songWaitingToBeChangedTo = "";
 		return songToBeChangedTo;
 	} else {
 		return "";

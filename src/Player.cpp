@@ -816,7 +816,7 @@ void Player::Update( float fDeltaTime )
 		return;
 
 	// -1 means that we're not going to update anything.
-	this->m_iNoteRowToBroadcastThisUpdate = -1;
+	this->m_bBroadcastScoreThisUpdate = false;
 
 	//LOG->Trace( "Player::Update(%f)", fDeltaTime );
 
@@ -1095,8 +1095,8 @@ void Player::Update( float fDeltaTime )
 	// process transforms that are waiting to be applied
 	ApplyWaitingTransforms();
 
-	if (m_iNoteRowToBroadcastThisUpdate >= 0 && SYNCMAN->isEnabled() && m_pPlayerStageStats) {
-		SYNCMAN->broadcastScoreChange(m_iNoteRowToBroadcastThisUpdate, *m_pPlayerStageStats);
+	if (m_bBroadcastScoreThisUpdate && SYNCMAN->isEnabled() && m_pPlayerStageStats) {
+		SYNCMAN->broadcastScoreChange(*m_pPlayerStageStats);
 	}
 }
 
@@ -1489,7 +1489,7 @@ void Player::UpdateHoldNotes( int iSongRow, float fDeltaTime, vector<TrackRowTap
 		TapNote &tn = *vTN[0].pTN;
 		SetHoldJudgment( tn, iFirstTrackWithMaxEndRow );
 		HandleHoldScore( tn );
-		m_iNoteRowToBroadcastThisUpdate = std::max(m_iNoteRowToBroadcastThisUpdate, iMaxEndRow);
+		this->m_bBroadcastScoreThisUpdate = true;
 		//LOG->Trace("hold result = %s",StringConversion::ToString(tn.HoldResult.hns).c_str());
 	}
 	//LOG->Trace("[Player::UpdateHoldNotes] ends");
@@ -1938,7 +1938,7 @@ void Player::ScoreAllActiveHoldsLetGo()
 
 					SetHoldJudgment( tn, iTrack );
 					// TODO: holds let go don't really have an applicable note row, so... let's go with "iStartCheckingAt" 
-					m_iNoteRowToBroadcastThisUpdate = std::max(m_iNoteRowToBroadcastThisUpdate, iStartCheckingAt);
+					this->m_bBroadcastScoreThisUpdate = true;
 					HandleHoldScore( tn );
 				}
 			}
@@ -2554,7 +2554,7 @@ void Player::UpdateJudgedRows()
 					SetJudgment( iRow, m_NoteData.GetFirstTrackWithTapOrHoldHead(iRow), NoteDataWithScoring::LastTapNoteWithResult( m_NoteData, iRow ) );
 				}
 				HandleTapRowScore( iRow );
-				m_iNoteRowToBroadcastThisUpdate = std::max(m_iNoteRowToBroadcastThisUpdate, iRow);
+				this->m_bBroadcastScoreThisUpdate = true;
 			}
 		}
 	}
@@ -2595,11 +2595,11 @@ void Player::UpdateJudgedRows()
 			case TNS_AvoidMine:
 				SetMineJudgment( tn.result.tns , iter.Track() );
 				tn.result.bHidden= true;
-				m_iNoteRowToBroadcastThisUpdate = std::max(m_iNoteRowToBroadcastThisUpdate, iRow);
+				this->m_bBroadcastScoreThisUpdate = true;
 				continue;
 			case TNS_HitMine:
 				SetMineJudgment( tn.result.tns , iter.Track() );
-				m_iNoteRowToBroadcastThisUpdate = std::max(m_iNoteRowToBroadcastThisUpdate, iRow);
+				this->m_bBroadcastScoreThisUpdate = true;
 				break;
 			}
 			if( m_pNoteField )

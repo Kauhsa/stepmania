@@ -224,7 +224,7 @@ protected:
 
 	vector<RageSound>	m_vKeysounds;
 
-	int 			m_iNoteRowToBroadcastThisUpdate;
+	bool 			m_bBroadcastScoreThisUpdate;
 
 	ThemeMetric<float>	GRAY_ARROWS_Y_STANDARD;
 	ThemeMetric<float>	GRAY_ARROWS_Y_REVERSE;

@@ -1706,7 +1706,7 @@ void ScreenGameplay::Update( float fDeltaTime )
 
 			// send initial score
 			FOREACH_EnabledPlayerInfo( m_vPlayerInfo, pi ) {
-				SYNCMAN->broadcastScoreChange(0, *pi->GetPlayerStageStats());
+				SYNCMAN->broadcastScoreChange(*pi->GetPlayerStageStats());
 			}
 			return;
 		} else {

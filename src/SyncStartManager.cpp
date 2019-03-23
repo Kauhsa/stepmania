@@ -21,6 +21,7 @@
 #include "ProfileManager.h"
 #include "RageLog.h"
 #include "GameState.h"
+#include "CommonMetrics.h"
 
 SyncStartManager *SYNCMAN;
 
@@ -33,7 +34,7 @@ SyncStartManager *SYNCMAN;
 #define SONG 0x01
 #define SCORE 0x02
 
-#define MISC_ITEMS_LENGTH 7
+#define MISC_ITEMS_LENGTH 9
 #define ALL_ITEMS_LENGTH (MISC_ITEMS_LENGTH + NUM_TapNoteScore + NUM_HoldNoteScore)
 
 std::vector<std::string> split(const std::string& str, const std::string& delim) {
@@ -58,6 +59,12 @@ std::string SongToString(const Song& song) {
 	vector<RString> bits;
 	split(sDir, "/", bits);
 	return song.m_sGroupName + '/' + *bits.rbegin();
+}
+
+std::string formatScore(const PlayerStageStats& pPlayerStageStats) {
+	return ssprintf("%.*f", 
+			(int) CommonMetrics::PERCENT_SCORE_DECIMAL_PLACES,
+			pPlayerStageStats.GetPercentDancePoints() * 100 );
 }
 
 SyncStartManager::SyncStartManager()
@@ -96,8 +103,12 @@ void SyncStartManager::enable()
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
 	// we need to be able to broadcast through this socket
-	int broadcast = 1;
-	if (setsockopt(this->socketfd, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) == -1) {
+	int enableOpt = 1;
+	if (
+		setsockopt(this->socketfd, SOL_SOCKET, SO_BROADCAST, &enableOpt, sizeof(enableOpt)) == -1 ||
+		setsockopt(this->socketfd, SOL_SOCKET, SO_REUSEADDR, &enableOpt, sizeof(enableOpt)) == -1 ||
+		setsockopt(this->socketfd, SOL_SOCKET, SO_REUSEPORT, &enableOpt, sizeof(enableOpt)) == -1
+	) {
 		return;
 	}
 
@@ -143,7 +154,7 @@ void SyncStartManager::broadcastSongPath(Song& song) {
 	this->broadcast(SONG, SongToString(song));
 }
 
-void SyncStartManager::broadcastScoreChange(int noteRow, const PlayerStageStats& pPlayerStageStats) {
+void SyncStartManager::broadcastScoreChange(const PlayerStageStats& pPlayerStageStats) {
 	stringstream msg;
 
 	std::string playerName = PROFILEMAN->GetPlayerName(pPlayerStageStats.m_player_number);
@@ -154,8 +165,10 @@ void SyncStartManager::broadcastScoreChange(int noteRow, const PlayerStageStats&
 	msg << this->activeSyncStartSong << '|';
 	msg << (int) pPlayerStageStats.m_player_number << '|';
 	msg << playerName << '|';
-	msg << noteRow << '|';
-	msg << pPlayerStageStats.GetPercentDancePoints() << '|';
+	msg << pPlayerStageStats.m_iActualDancePoints << '|';
+	msg << pPlayerStageStats.m_iCurPossibleDancePoints << '|';
+	msg << pPlayerStageStats.m_iPossibleDancePoints << '|';
+	msg << formatScore(pPlayerStageStats) << '|';
 	msg << pPlayerStageStats.GetCurrentLife() << '|';
 	msg << (pPlayerStageStats.m_bFailed ? '1' : '0') << '|';
 
@@ -203,8 +216,10 @@ void SyncStartManager::receiveScoreChange(struct in_addr in_addr, const std::str
 
 		scorePlayer.playerNumber = (PlayerNumber) std::stoi(*iter++); 
 		scorePlayer.playerName = *iter++;
-		noteRow = std::stoi(*iter++);
-		scoreData.score = std::stof(*iter++);
+		scoreData.actualDancePoints = std::stoi(*iter++);
+		scoreData.currentPossibleDancePoints = std::stoi(*iter++);
+		scoreData.possibleDancePoints = std::stoi(*iter++);
+		scoreData.formattedScore = *iter++;
 		scoreData.life = std::stof(*iter++);
 		scoreData.failed = *iter++ == "1" ? true : false;
 
@@ -216,9 +231,8 @@ void SyncStartManager::receiveScoreChange(struct in_addr in_addr, const std::str
 			scoreData.holdNoteScores[i] = std::stoi(*iter++);
 		}
 
-		if (this->syncStartScoreKeeper.AddScore(scorePlayer, noteRow, scoreData)) {
-			MESSAGEMAN->Broadcast("SyncStartPlayerScoresChanged");
-		}
+		this->syncStartScoreKeeper.AddScore(scorePlayer, scoreData);
+		MESSAGEMAN->Broadcast("SyncStartPlayerScoresChanged");
 	} catch (std::exception& e) {
 		// just don't crash!
 		LOG->Warn("Could not parse score change '%s'", msg);
@@ -315,7 +329,6 @@ bool SyncStartManager::AttemptStart() {
 }
 
 void SyncStartManager::SongChangedDuringGameplay(const Song& song) {
-	this->syncStartScoreKeeper.ResetButKeepScores();
 	this->activeSyncStartSong = SongToString(song);
 }
 
@@ -343,7 +356,11 @@ class LunaSyncStartManager: public Luna<SyncStartManager> {
 				lua_settable(L, inner_table_index);
  
 				lua_pushstring(L, "score");
-				lua_pushnumber(L, score->data.score);
+				lua_pushstring(L, score->data.formattedScore.c_str());
+				lua_settable(L, inner_table_index);
+
+				lua_pushstring(L, "failed");
+				lua_pushboolean(L, score->data.failed);
 				lua_settable(L, inner_table_index);
 				
 				lua_rawseti(L, outer_table_index, i + 1);

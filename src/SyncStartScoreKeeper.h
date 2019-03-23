@@ -15,7 +15,10 @@ struct ScorePlayer {
 };
 
 struct ScoreData {
-	float score;
+	int actualDancePoints;
+    int currentPossibleDancePoints;
+    int possibleDancePoints;
+    std::string formattedScore;
 	float life;
 	bool failed;
 	int tapNoteScores[NUM_TapNoteScore];
@@ -29,15 +32,12 @@ struct SyncStartScore {
 
 class SyncStartScoreKeeper {
     private:
-        std::map<ScorePlayer, std::map<int, ScoreData>> scoreBuffer;
-        int largestNoteRow = 0;
-        int usedNoteRow = 0;
+        std::map<ScorePlayer, ScoreData> scoreBuffer;
 
     public:
-        bool AddScore(const ScorePlayer scorePlayer, int noteRow, const ScoreData scoreData);
+        void AddScore(const ScorePlayer scorePlayer, const ScoreData scoreData);
         std::vector<SyncStartScore> GetScores(bool latestValues);
         void ResetScores();
-        void ResetButKeepScores();
 };
 
 #endif /* SRC_SYNCSTARTSCOREKEEPER_H */

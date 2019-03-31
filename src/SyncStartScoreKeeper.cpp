@@ -19,12 +19,8 @@ float getScore(const SyncStartScore& score) {
 	return clamp(0, score.data.actualDancePoints / score.data.possibleDancePoints, 1);
 }
 
-float getLostScore(const SyncStartScore& score) {
-	if (score.data.currentPossibleDancePoints == 0) {
-		return 0;
-	}
-
-	return clamp(0, score.data.actualDancePoints / score.data.currentPossibleDancePoints, 1);
+int getLostDancePoints(const SyncStartScore& score) {
+	return score.data.currentPossibleDancePoints - score.data.actualDancePoints;
 }
 
 bool sortByScore(const SyncStartScore& l, const SyncStartScore& r) {
@@ -41,8 +37,9 @@ bool sortByLostScore(const SyncStartScore& l, const SyncStartScore& r) {
 		return sortByScore(l, r);
 	}
 
-	auto rScore = getLostScore(r);
-	auto lScore = getLostScore(l);
+	// negation so order is correct. unlike in score, less lost dance points is better.
+	auto rScore = -getLostDancePoints(r);
+	auto lScore = -getLostDancePoints(l);
 	auto rFailed = r.data.failed ? 0 : 1;
 	auto lFailed = l.data.failed ? 0 : 1;
 	return std::tie(rFailed, rScore) < std::tie(lFailed, lScore);

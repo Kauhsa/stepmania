@@ -8,6 +8,7 @@
 #include "PlayerStageStats.h"
 #include "SyncStartScoreKeeper.h"
 #include "Song.h"
+#include "Course.h"
 
 class SyncStartManager
 {
@@ -18,7 +19,7 @@ private:
 	int getNextMessage(char* buffer, sockaddr_in* remaddr, size_t bufferSize);
 
 	bool waitingForSongChanges;
-	std::string songWaitingToBeChangedTo;
+	std::string songOrCourseWaitingToBeChangedTo;
 	bool waitingForSynchronizedStarting;
 	std::string activeSyncStartSong;
 	bool shouldStart;
@@ -31,14 +32,15 @@ public:
 	void enable();
 	void disable();
 	void broadcastStarting();
-	void broadcastSongPath(Song& song);
+	void broadcastSelectedSong(const Song& song);
+	void broadcastSelectedCourse(const Course& course);
 	void broadcastScoreChange(const PlayerStageStats& pPlayerStageStats);
 	void receiveScoreChange(struct in_addr in_addr, const std::string& msg);
 	std::vector<SyncStartScore> GetCurrentPlayerScores();
 	std::vector<SyncStartScore> GetLatestPlayerScores();
 	void Update();
 	void ListenForSongChanges(bool enabled);
-	std::string ShouldChangeSong();
+	std::string GetSongOrCourseToChangeTo();
 	void StartListeningForSynchronizedStart(const Song& song);
 	void StopListeningForSynchronizedStart();
 	bool AttemptStart();

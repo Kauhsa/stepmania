@@ -61,6 +61,18 @@ std::string SongToString(const Song& song) {
 	return song.m_sGroupName + '/' + *bits.rbegin();
 }
 
+std::string CourseToString(const Course& course) {
+	if (course.m_sPath.empty()) {
+		return "";
+	}
+
+	RString sDir = course.m_sPath;
+	sDir.Replace("\\","/");
+	vector<RString> bits;
+	split(sDir, "/", bits);
+	return course.m_sGroupName + '/' + *bits.rbegin();
+}
+
 std::string formatScore(const PlayerStageStats& pPlayerStageStats) {
 	return ssprintf("%.*f", 
 			(int) CommonMetrics::PERCENT_SCORE_DECIMAL_PLACES,
@@ -150,8 +162,12 @@ void SyncStartManager::broadcastStarting()
 	}
 }
 
-void SyncStartManager::broadcastSongPath(Song& song) {
+void SyncStartManager::broadcastSelectedSong(const Song& song) {
 	this->broadcast(SONG, SongToString(song));
+}
+
+void SyncStartManager::broadcastSelectedCourse(const Course& course) {
+	this->broadcast(SONG, CourseToString(course));
 }
 
 void SyncStartManager::broadcastScoreChange(const PlayerStageStats& pPlayerStageStats) {
@@ -273,7 +289,7 @@ void SyncStartManager::Update() {
 			std::string msg = std::string(buffer + 1, received - 1);
 
 			if (opcode == SONG && this->waitingForSongChanges) {
-				this->songWaitingToBeChangedTo = msg;
+				this->songOrCourseWaitingToBeChangedTo = msg;
 			} else if (opcode == START && this->waitingForSynchronizedStarting) {
 				if (msg == activeSyncStartSong) {
 					this->shouldStart = true;
@@ -296,15 +312,15 @@ std::vector<SyncStartScore> SyncStartManager::GetLatestPlayerScores() {
 void SyncStartManager::ListenForSongChanges(bool enabled) {
 	LOG->Info("Listen for song changes: %d", enabled);
 	this->waitingForSongChanges = enabled;
-	this->songWaitingToBeChangedTo = "";
+	this->songOrCourseWaitingToBeChangedTo = "";
 }
 
-std::string SyncStartManager::ShouldChangeSong() {
-	std::string songToBeChangedTo = this->songWaitingToBeChangedTo;
+std::string SyncStartManager::GetSongOrCourseToChangeTo() {
+	std::string songOrCourse = this->songOrCourseWaitingToBeChangedTo;
 
-	if (!songToBeChangedTo.empty()) {
-		this->songWaitingToBeChangedTo = "";
-		return songToBeChangedTo;
+	if (!songOrCourse.empty()) {
+		this->songOrCourseWaitingToBeChangedTo = "";
+		return songOrCourse;
 	} else {
 		return "";
 	}

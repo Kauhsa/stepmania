@@ -508,6 +508,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			SYNCMAN->enable();
 			LOG->Info( "Synchronized start enabled" );
 			SCREENMAN->SystemMessage("Synchronized start enabled");
+			SOUND->StopMusic();
 			return true;
 		}
 	}

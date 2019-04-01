@@ -131,7 +131,7 @@ void SyncStartManager::enable()
 	this->enabled = true;
 }
 
-void SyncStartManager::broadcast(char code, std::string msg) {
+void SyncStartManager::broadcast(char code, const std::string& msg) {
 	if (!this->enabled) {
 		return;
 	}

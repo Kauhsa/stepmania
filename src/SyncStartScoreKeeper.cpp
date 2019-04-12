@@ -16,7 +16,7 @@ float getScore(const SyncStartScore& score) {
 		return 0;
 	}
 
-	return clamp(0, score.data.actualDancePoints / score.data.possibleDancePoints, 1);
+	return clamp(score.data.actualDancePoints / score.data.possibleDancePoints, 0, 1);
 }
 
 int getLostDancePoints(const SyncStartScore& score) {

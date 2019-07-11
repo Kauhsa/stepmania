@@ -319,6 +319,8 @@ void StatsManager::SavePadmissScore( const StageStats *pSS, PlayerNumber pn )
 
 	Profile *pp = PROFILEMAN->GetProfile( playerStats->m_player_number );
 	xml->AppendChild( "ScoreValue", playerStats->GetPercentDancePoints() );
+	xml->AppendChild( "Passed", !playerStats->m_bFailed );
+	xml->AppendChild( "SecondsSurvived", playerStats->m_fAliveSeconds );
 	xml->AppendChild( "PlayerNumber", playerStats->m_player_number );
 	xml->AppendChild( "PlayerName", pp->m_sDisplayName );
 	xml->AppendChild( "PlayerGuid", pp->m_sGuid );
@@ -331,6 +333,7 @@ void StatsManager::SavePadmissScore( const StageStats *pSS, PlayerNumber pn )
 	stepdata->AppendChild( "Meter", steps->GetMeter() );
 	stepdata->AppendChild( "StepArtist", steps->GetCredit() );
 	stepdata->AppendChild( "StepsType", steps->m_StepsTypeStr );
+	stepdata->AppendChild( "Group", song->m_sGroupName );
 	RageFileObjMem f;
 	vector<Steps*> stepv;
 	stepv.push_back(steps);

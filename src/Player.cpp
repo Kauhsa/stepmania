@@ -1488,11 +1488,23 @@ void Player::UpdateHoldNotes( int iSongRow, float fDeltaTime, vector<TrackRowTap
 		//LOG->Trace("tap note scoring time.");
 		TapNote &tn = *vTN[0].pTN;
 		SetHoldJudgment( tn, iFirstTrackWithMaxEndRow );
-		HandleHoldScore( tn );
+        AddToNoteScoresWithBeatPositions(iFirstTrackWithMaxEndRow, hns, tn);
+        HandleHoldScore( tn );
 		this->m_bBroadcastScoreThisUpdate = true;
 		//LOG->Trace("hold result = %s",StringConversion::ToString(tn.HoldResult.hns).c_str());
 	}
 	//LOG->Trace("[Player::UpdateHoldNotes] ends");
+}
+
+void Player::AddToNoteScoresWithBeatPositions(int track, const HoldNoteScore &hns, const TapNote &tn) const {
+    const float judgeBeatPosition = m_pPlayerState->m_Position.m_fSongBeat;
+    float tapNoteOffset = tn.result.fTapNoteOffset;
+    int col = track;
+
+    // Push the tap note score to player stage stats
+    m_pPlayerStageStats->m_noteScoresWithBeatPosition.push_back(
+            PlayerStageStats::NoteScoreWithBeatPosition(col, hns, judgeBeatPosition, tapNoteOffset)
+    );
 }
 
 void Player::ApplyWaitingTransforms()
@@ -1999,7 +2011,7 @@ void Player::Step( int col, int row, const RageTimer &tm, bool bHeld, bool bRele
 	}
 	
 	// Add step input with timestamp to PlayerStageStats
-	m_pPlayerStageStats->m_playerInputEvents.push_back(PlayerStageStats::PlayerInputEvent(col, fSongBeat, bHeld, bRelease));
+	m_pPlayerStageStats->m_playerInputEvents.push_back(PlayerStageStats::PlayerInputEvent(col, fSongBeat, bRelease));
 	
 	const int iSongRow = row == -1 ? BeatToNoteRow( fSongBeat ) : row;
 
@@ -2493,10 +2505,7 @@ void Player::UpdateTapNotesMissedOlderThan( float fMissIfOlderThanSeconds )
 			tn.result.tns = TNS_AvoidMine;
 			/* The only real way to tell if a mine has been scored is if it has disappeared
 			 * but this only works for hit mines so update the scores for avoided mines here. */
-			if( m_pPrimaryScoreKeeper )
-				m_pPrimaryScoreKeeper->HandleTapScore( tn );
-			if( m_pSecondaryScoreKeeper )
-				m_pSecondaryScoreKeeper->HandleTapScore( tn );
+            UpdateTapNoteScores(iter.Track(), tn);
 		}
 		else
 		{
@@ -2637,10 +2646,7 @@ void Player::UpdateJudgedRows()
 				m_pSecondaryScoreDisplay->OnJudgment( tn.result.tns );
 
 			// Make sure hit mines affect the dance points.
-			if( m_pPrimaryScoreKeeper )
-				m_pPrimaryScoreKeeper->HandleTapScore( tn );
-			if( m_pSecondaryScoreKeeper )
-				m_pSecondaryScoreKeeper->HandleTapScore( tn );
+            UpdateTapNoteScores(iter.Track(), tn);
 			tn.result.bHidden = true;
 		}
 		// If we hit the end of the loop, m_pIterUnjudgedMineRows needs to be
@@ -2888,11 +2894,9 @@ void Player::HandleTapRowScore( unsigned row )
 			tn.type == TapNoteType_Mine ||
 			tn.type == TapNoteType_AutoKeysound)
 			continue;
-		if( m_pPrimaryScoreKeeper )
-			m_pPrimaryScoreKeeper->HandleTapScore( tn );
-		if( m_pSecondaryScoreKeeper )
-			m_pSecondaryScoreKeeper->HandleTapScore( tn );
-	}
+
+        UpdateTapNoteScores(track, tn);
+    }
 
 	if( m_pPrimaryScoreKeeper != NULL )
 		m_pPrimaryScoreKeeper->HandleTapRowScore( m_NoteData, row );
@@ -2960,6 +2964,26 @@ void Player::HandleTapRowScore( unsigned row )
 	}
 
 	ChangeLife( scoreOfLastTap );
+}
+
+void Player::UpdateTapNoteScores(int track, const TapNote &tn) const {
+    AddToNoteScoresWithBeatPosition(track, tn);
+
+    if(m_pPrimaryScoreKeeper)
+        m_pPrimaryScoreKeeper->HandleTapScore(tn );
+    if(m_pSecondaryScoreKeeper)
+        m_pSecondaryScoreKeeper->HandleTapScore(tn );
+}
+
+void Player::AddToNoteScoresWithBeatPosition(int track, const TapNote &tn) const {
+    const float judgeBeatPosition = m_pPlayerState->m_Position.m_fSongBeat;
+    float tapNoteOffset = tn.result.fTapNoteOffset;
+    int col = track;
+
+    // Push the tap note score to player stage stats
+    m_pPlayerStageStats->m_noteScoresWithBeatPosition.push_back(
+            PlayerStageStats::NoteScoreWithBeatPosition(col, tn.result.tns, judgeBeatPosition, tapNoteOffset)
+    );
 }
 
 void Player::HandleHoldCheckpoint(int iRow, 

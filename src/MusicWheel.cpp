@@ -1612,13 +1612,14 @@ Song *MusicWheel::GetPreferredSelectionForRandomOrPortal()
 	vector<MusicWheelItemData *> &wid = getWheelItemsData(GAMESTATE->m_SortOrder);
 	vector<MusicWheelItemData *> randomPool;
 
-	FOREACH( MusicWheelItemData*, wid, musicWheelItem )
-	{
+	for (int i = 0; i < wid.size(); i++) {
+		MusicWheelItemData* musicWheelItem = wid[i];
+		
 		// if no selected group, anything goes - otherwise, make sure the item is from selected group
-		bool validGroup = sPreferredGroup.empty() || (*musicWheelItem)->m_sText == sPreferredGroup;
-		bool isSong = (*musicWheelItem)->m_Type == WheelItemDataType_Song;
+		bool validGroup = sPreferredGroup.empty() || musicWheelItem->m_sText == sPreferredGroup;
+		bool isSong = musicWheelItem->m_Type == WheelItemDataType_Song;
 		if (validGroup && isSong) {
-			randomPool.push_back( *musicWheelItem );
+			randomPool.push_back( musicWheelItem );
 		}
 	}
 

@@ -3007,8 +3007,15 @@ void ScreenGameplay::HandleScreenMessage( const ScreenMessage SM )
 		m_NextSong.Reset();
 		m_NextSong.PlayCommand( "Finish" );
 		m_NextSong.StartTransitioning( SM_None );
-
-		StartPlayingSong( MIN_SECONDS_TO_STEP_NEXT_SONG, 0 );
+        
+        if (SYNCMAN->isEnabled())
+        {
+            m_bWaitingForSyncStart = true;
+        }
+        else
+        {
+            StartPlayingSong( MIN_SECONDS_TO_STEP_NEXT_SONG, 0 );
+        }
 	}
 	else if( SM == SM_PlayToasty )
 	{

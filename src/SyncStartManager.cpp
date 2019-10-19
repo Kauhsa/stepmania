@@ -33,6 +33,8 @@ SyncStartManager *SYNCMAN;
 #define START 0x00
 #define SONG 0x01
 #define SCORE 0x02
+#define MARATHON_SONG_LOADING 0x03
+#define MARATHON_SONG_READY 0x04
 
 #define MISC_ITEMS_LENGTH 9
 #define ALL_ITEMS_LENGTH (MISC_ITEMS_LENGTH + NUM_TapNoteScore + NUM_HoldNoteScore)
@@ -92,6 +94,7 @@ SyncStartManager::SyncStartManager()
 
 	this->socketfd = -1;
 	this->enabled = false;
+    this->machinesLoadingNextSongCounter = 0;
 }
 
 SyncStartManager::~SyncStartManager()
@@ -124,7 +127,7 @@ void SyncStartManager::enable()
 		return;
 	}
 
-	if (bind(this->socketfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+	if (bind(this->socketfd, (const struct sockaddr *)&addr, (socklen_t)sizeof(addr)) < 0) {
 		return;
 	}
 
@@ -202,6 +205,14 @@ void SyncStartManager::broadcastScoreChange(const PlayerStageStats& pPlayerStage
 	this->broadcast(SCORE, msg.str()); 
 }
 
+void SyncStartManager::broadcastMarathonSongLoading() {
+    this->broadcast(MARATHON_SONG_LOADING, "");
+}
+
+void SyncStartManager::broadcastMarathonSongReady() {
+    this->broadcast(MARATHON_SONG_READY, "");
+}
+
 void SyncStartManager::receiveScoreChange(struct in_addr in_addr, const std::string& msg) {
 	if (this->activeSyncStartSong.empty()) {
 		return;
@@ -212,7 +223,6 @@ void SyncStartManager::receiveScoreChange(struct in_addr in_addr, const std::str
 	};
 
 	ScoreData scoreData;
-	int noteRow;
 
 	try {
 		vector<std::string> items = split(msg, "|");
@@ -251,7 +261,7 @@ void SyncStartManager::receiveScoreChange(struct in_addr in_addr, const std::str
 		MESSAGEMAN->Broadcast("SyncStartPlayerScoresChanged");
 	} catch (std::exception& e) {
 		// just don't crash!
-		LOG->Warn("Could not parse score change '%s'", msg);
+		LOG->Warn("Could not parse score change '%s'", msg.c_str());
 	}
 }
 
@@ -268,7 +278,6 @@ void SyncStartManager::disable()
 
 int SyncStartManager::getNextMessage(char* buffer, sockaddr_in* remaddr, size_t bufferSize) {
 	socklen_t addrlen = sizeof remaddr;
-	ssize_t received;
 	return recvfrom(this->socketfd, buffer, bufferSize, MSG_DONTWAIT, (struct sockaddr *) remaddr, &addrlen);
 }
 
@@ -296,7 +305,16 @@ void SyncStartManager::Update() {
 				}
 			} else if (opcode == SCORE) {
 				this->receiveScoreChange(remaddr.sin_addr, msg);
-			}
+            } else if (opcode == MARATHON_SONG_LOADING) {
+                this->machinesLoadingNextSongCounter++;
+                LOG->Info("MARATHON_SONG_LOADING, counter=%d", this->machinesLoadingNextSongCounter);
+            } else if (opcode == MARATHON_SONG_READY) {
+                this->machinesLoadingNextSongCounter--;
+                LOG->Info("MARATHON_SONG_READY, counter=%d", this->machinesLoadingNextSongCounter);
+                if (this->machinesLoadingNextSongCounter == 0) {
+                    this->shouldStart = true;
+                }
+            }
 		}
 	} while (received > 0);
 }
@@ -339,9 +357,13 @@ void SyncStartManager::StopListeningForSynchronizedStart() {
 }
 
 bool SyncStartManager::AttemptStart() {
-	bool shouldStart = this->shouldStart;
-	this->shouldStart = false;
-	return shouldStart;
+    if (this->shouldStart) {
+        this->machinesLoadingNextSongCounter = 0;
+        this->shouldStart = false;
+        return true;
+    } else {
+        return false;
+    }
 }
 
 void SyncStartManager::SongChangedDuringGameplay(const Song& song) {

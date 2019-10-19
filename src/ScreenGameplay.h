@@ -341,8 +341,12 @@ protected:
 	// All we can do is guess based on what subclass we are.
 	bool m_bForceNoNetwork;
 
-	// derp
 	bool m_bWaitingForSyncStart;
+    
+    // Time we have waited after finishing a song in marathon mode
+    float m_fTimeWaiting;
+    
+    bool m_bSongReadySent;
 };
 
 vector<PlayerInfo>::iterator GetNextEnabledPlayerInfo		( vector<PlayerInfo>::iterator iter, vector<PlayerInfo> &v );

@@ -23,6 +23,7 @@ private:
 	bool waitingForSynchronizedStarting;
 	std::string activeSyncStartSong;
 	bool shouldStart;
+    int machinesLoadingNextSongCounter;
 
 	SyncStartScoreKeeper syncStartScoreKeeper;
 public:
@@ -35,6 +36,8 @@ public:
 	void broadcastSelectedSong(const Song& song);
 	void broadcastSelectedCourse(const Course& course);
 	void broadcastScoreChange(const PlayerStageStats& pPlayerStageStats);
+    void broadcastMarathonSongLoading();
+    void broadcastMarathonSongReady();
 	void receiveScoreChange(struct in_addr in_addr, const std::string& msg);
 	std::vector<SyncStartScore> GetCurrentPlayerScores();
 	std::vector<SyncStartScore> GetLatestPlayerScores();

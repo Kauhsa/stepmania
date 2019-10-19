@@ -329,6 +329,7 @@ ScreenGameplay::ScreenGameplay()
 	m_bWaitingForSyncStart = false;
 	m_delaying_ready_announce= false;
 	GAMESTATE->m_AdjustTokensBySongCostForFinalStageCheck= false;
+    m_bSongReadySent = false;
 }
 
 void ScreenGameplay::Init()
@@ -1688,6 +1689,14 @@ void ScreenGameplay::Update( float fDeltaTime )
 	}
 
 	if ( m_bWaitingForSyncStart ) {
+        m_fTimeWaiting += fDeltaTime;
+        if (GAMESTATE->IsCourseMode() && GAMESTATE->GetCourseSongIndex() > 0 && !m_bSongReadySent && m_fTimeWaiting > 2.0f) {
+            SYNCMAN->broadcastMarathonSongReady();
+            m_bSongReadySent = true;
+        }
+        
+        
+
 		if (SYNCMAN->AttemptStart()) {
 			m_bWaitingForSyncStart = false;
 			SCREENMAN->HideSystemMessage();
@@ -1704,14 +1713,18 @@ void ScreenGameplay::Update( float fDeltaTime )
 			UpdateSongPosition(0);
 			Screen::Update(0);
 
-			// send initial score
+            // send initial score
 			FOREACH_EnabledPlayerInfo( m_vPlayerInfo, pi ) {
 				SYNCMAN->broadcastScoreChange(*pi->GetPlayerStageStats());
 			}
 			return;
 		} else {
-			SCREENMAN->SystemMessageNoAnimate("Waiting for synchronized start - press START to begin on all machines!");
-			Screen::Update(0);
+            if (GAMESTATE->IsCourseMode() && GAMESTATE->GetCourseSongIndex() > 0) {
+                SCREENMAN->SystemMessageNoAnimate("Wait...");
+            } else {
+                SCREENMAN->SystemMessageNoAnimate("Waiting for synchronized start - press START to begin on all machines!");
+            }
+            Screen::Update(0);
 			return;
 		}
 	}
@@ -3000,15 +3013,24 @@ void ScreenGameplay::HandleScreenMessage( const ScreenMessage SM )
 		SongFinished();
 
 		MESSAGEMAN->Broadcast( "ChangeCourseSongOut" );
-
+        SYNCMAN->broadcastMarathonSongLoading();
+        m_bSongReadySent = false;
+        m_fTimeWaiting = 0;
 		GAMESTATE->m_bLoadingNextSong = false;
 		LoadNextSong();
 
 		m_NextSong.Reset();
 		m_NextSong.PlayCommand( "Finish" );
 		m_NextSong.StartTransitioning( SM_None );
-
-		StartPlayingSong( MIN_SECONDS_TO_STEP_NEXT_SONG, 0 );
+        
+        if (SYNCMAN->isEnabled())
+        {
+            m_bWaitingForSyncStart = true;
+        }
+        else
+        {
+            StartPlayingSong( MIN_SECONDS_TO_STEP_NEXT_SONG, 0 );
+        }
 	}
 	else if( SM == SM_PlayToasty )
 	{

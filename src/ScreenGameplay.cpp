@@ -1692,19 +1692,9 @@ void ScreenGameplay::Update( float fDeltaTime )
 			m_bWaitingForSyncStart = false;
 			SCREENMAN->HideSystemMessage();
 
-			// do shit, copied from StartPlayingSong()
-			RageSoundParams p;
-			p.m_fSpeed = GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate;
-			p.StopMode = RageSoundParams::M_CONTINUE;
-			const float fFirstSecond = GAMESTATE->m_pCurSong->GetFirstSecond();
-			float fStartDelay = MIN_SECONDS_TO_STEP - fFirstSecond;
-			fStartDelay = max( fStartDelay, (float) MIN_SECONDS_TO_MUSIC );
-			p.m_StartSecond = -fStartDelay;
-			m_pSoundMusic->Play(false, &p);
-			UpdateSongPosition(0);
-			Screen::Update(0);
+            StartPlayingSong(0, 0);
 
-			// send initial score
+            // send initial score
 			FOREACH_EnabledPlayerInfo( m_vPlayerInfo, pi ) {
 				SYNCMAN->broadcastScoreChange(*pi->GetPlayerStageStats());
 			}

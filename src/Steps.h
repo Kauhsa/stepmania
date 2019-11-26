@@ -58,7 +58,7 @@ public:
 	 * @brief Determine if these steps were created by the autogenerator.
 	 * @return true if they were, false otherwise.
 	 */
-	bool IsAutogen() const				{ return parent != NULL; }
+	bool IsAutogen() const				{ return parent != nullptr; }
 
 	/**
 	 * @brief Determine if this set of Steps is an edit.
@@ -123,6 +123,16 @@ public:
 	void SetCredit( RString sCredit );
 	void SetChartStyle( RString sChartStyle );
 	static bool MakeValidEditDescription( RString &sPreferredDescription );	// return true if was modified
+
+	/* This is a reimplementation of the lua version of the script to generate chart keys, except this time
+	using the notedata stored in game memory immediately after reading it than parsing it using lua. - Mina */
+	RString GenerateChartKey(NoteData &nd, TimingData *td);
+	RString GenerateChartKey();
+	RString ChartKey;
+	RString GetChartKey();
+	void SetChartKey(const RString &k) { ChartKey = k; }
+
+	void ChangeFilenamesForCustomSong();
 
 	void SetLoadedFromProfile( ProfileSlot slot )	{ m_LoadedFromProfile = slot; }
 	void SetMeter( int meter );

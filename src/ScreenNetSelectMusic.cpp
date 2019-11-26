@@ -50,7 +50,7 @@ void ScreenNetSelectMusic::Init()
 		m_DC[p] = GAMESTATE->m_PreferredDifficulty[p];
 
 		m_StepsDisplays[p].SetName( ssprintf("StepsDisplayP%d",p+1) );
-		m_StepsDisplays[p].Load( "StepsDisplayNet", NULL );
+		m_StepsDisplays[p].Load( "StepsDisplayNet", nullptr );
 		LOAD_ALL_COMMANDS_AND_SET_XY( m_StepsDisplays[p] );
 		this->AddChild( &m_StepsDisplays[p] );
 	}
@@ -159,7 +159,7 @@ void ScreenNetSelectMusic::HandleScreenMessage( const ScreenMessage SM )
 		// you have multiple copies of the "same" song you can chose which copy to play.
 		Song* CurSong = m_MusicWheel.GetSelectedSong();
 
-		if(CurSong != NULL )
+		if(CurSong != nullptr )
 
 			if( ( !CurSong->GetTranslitArtist().CompareNoCase( NSMAN->m_sArtist ) ) &&
 					( !CurSong->GetTranslitMainTitle().CompareNoCase( NSMAN->m_sMainTitle ) ) &&
@@ -181,14 +181,37 @@ void ScreenNetSelectMusic::HandleScreenMessage( const ScreenMessage SM )
 
 		vector <Song *> AllSongs = SONGMAN->GetAllSongs();
 		unsigned i;
-		for( i=0; i < AllSongs.size(); i++ )
+		bool found = false;
+		if (NSMAN->GetServerVersion() >= 129)
 		{
-			m_cSong = AllSongs[i];
-			if( ( !m_cSong->GetTranslitArtist().CompareNoCase( NSMAN->m_sArtist ) ) &&
-					( !m_cSong->GetTranslitMainTitle().CompareNoCase( NSMAN->m_sMainTitle ) ) &&
-					( !m_cSong->GetTranslitSubTitle().CompareNoCase( NSMAN->m_sSubTitle ) ) )
-					break;
+			//Dont earch by filehash if none was sent
+			if(!NSMAN->m_sFileHash.empty())
+				for (i = 0; i < AllSongs.size(); i++)
+				{
+					m_cSong = AllSongs[i];
+					if (NSMAN->m_sArtist == m_cSong->GetTranslitArtist() &&
+						NSMAN->m_sMainTitle == m_cSong->GetTranslitMainTitle() &&
+						NSMAN->m_sSubTitle == m_cSong->GetTranslitSubTitle() &&
+						NSMAN->m_sFileHash == m_cSong->GetFileHash())
+					{
+						found = true;
+						break;
+					}
+				}
+
 		}
+		//If we couldnt find it using file hash search for it without using it, if using SMSERVER < 129 it will go here
+		if(!found)
+			for (i = 0; i < AllSongs.size(); i++)
+			{
+				m_cSong = AllSongs[i];
+				if (NSMAN->m_sArtist == m_cSong->GetTranslitArtist() &&
+					NSMAN->m_sMainTitle == m_cSong->GetTranslitMainTitle() &&
+					NSMAN->m_sSubTitle == m_cSong->GetTranslitSubTitle())
+				{
+					break;
+				}
+			}
 
 		bool haveSong = i != AllSongs.size();
 
@@ -355,7 +378,7 @@ bool ScreenNetSelectMusic::MenuDown( const InputEventPlus &input )
 		}
 	}
 
-	if( GAMESTATE->m_pCurSong == NULL )
+	if( GAMESTATE->m_pCurSong == nullptr )
 		return false;
 	StepsType st = GAMESTATE->GetCurrentStyle(pn)->m_StepsType;
 	vector <Steps *> MultiSteps;
@@ -401,36 +424,40 @@ bool ScreenNetSelectMusic::MenuDown( const InputEventPlus &input )
 	return true;
 }
 
-bool ScreenNetSelectMusic::MenuStart( const InputEventPlus &input )
+bool ScreenNetSelectMusic::MenuStart(const InputEventPlus &input)
 {
+	return SelectCurrent();
+}
+bool ScreenNetSelectMusic::SelectCurrent()
+{
+
 	bool bResult = m_MusicWheel.Select();
 
-	if( !bResult )
+	if (!bResult)
 		return true;
 
-	if( m_MusicWheel.GetSelectedType() != WheelItemDataType_Song )
+	if (m_MusicWheel.GetSelectedType() != WheelItemDataType_Song)
 		return true;
 
 	Song * pSong = m_MusicWheel.GetSelectedSong();
 
-	if( pSong == NULL )
+	if (pSong == nullptr)
 		return false;
 
-	GAMESTATE->m_pCurSong.Set( pSong );
+	GAMESTATE->m_pCurSong.Set(pSong);
 
-	if( NSMAN->useSMserver )
+	if (NSMAN->useSMserver)
 	{
 		NSMAN->m_sArtist = pSong->GetTranslitArtist();
 		NSMAN->m_sMainTitle = pSong->GetTranslitMainTitle();
 		NSMAN->m_sSubTitle = pSong->GetTranslitSubTitle();
 		NSMAN->m_iSelectMode = 2; // Command for user selecting song
-		NSMAN->SelectUserSong ();
+		NSMAN->SelectUserSong();
 	}
 	else
 		StartSelectedSong();
 	return true;
 }
-
 bool ScreenNetSelectMusic::MenuBack( const InputEventPlus &input )
 {
 	SOUND->StopMusic();
@@ -482,10 +509,10 @@ void ScreenNetSelectMusic::StartSelectedSong()
 
 void ScreenNetSelectMusic::UpdateDifficulties( PlayerNumber pn )
 {
-	if( GAMESTATE->m_pCurSong == NULL )
+	if( GAMESTATE->m_pCurSong == nullptr )
 	{
 		m_StepsDisplays[pn].SetFromStepsTypeAndMeterAndDifficultyAndCourseType( StepsType_Invalid, 0, Difficulty_Beginner, CourseType_Invalid ); 
-		//m_DifficultyIcon[pn].SetFromSteps( pn, NULL );	// It will blank it out 
+		//m_DifficultyIcon[pn].SetFromSteps( pn, nullptr );	// It will blank it out 
 		return;
 	}
 
@@ -502,14 +529,14 @@ void ScreenNetSelectMusic::UpdateDifficulties( PlayerNumber pn )
 
 void ScreenNetSelectMusic::MusicChanged()
 {
-	if( GAMESTATE->m_pCurSong == NULL )
+	if( GAMESTATE->m_pCurSong == nullptr )
 	{
 		FOREACH_EnabledPlayer (pn)
 			UpdateDifficulties( pn );
 
 		SOUND->StopMusic();
 		// todo: handle playing section music correctly. -aj
-		// SOUND->PlayMusic( m_sSectionMusicPath, NULL, true, 0, -1 );
+		// SOUND->PlayMusic( m_sSectionMusicPath, nullptr, true, 0, -1 );
 		return;
 	} 
 
@@ -562,7 +589,7 @@ void ScreenNetSelectMusic::MusicChanged()
 			SOUND->StopMusic();
 			SOUND->PlayMusic(
 				GAMESTATE->m_pCurSong->GetPreviewMusicPath(),
-				NULL,
+				nullptr,
 				true,
 				GAMESTATE->m_pCurSong->GetPreviewStartSeconds(),
 				GAMESTATE->m_pCurSong->m_fMusicSampleLengthSeconds );
@@ -579,6 +606,37 @@ void ScreenNetSelectMusic::Update( float fDeltaTime )
 	}
 	ScreenNetSelectBase::Update( fDeltaTime );
 }
+
+MusicWheel* ScreenNetSelectMusic::GetMusicWheel()
+{
+	return &m_MusicWheel;
+}
+
+
+// lua start
+#include "LuaBinding.h"
+
+/** @brief Allow Lua to have access to the PlayerState. */
+class LunaScreenNetSelectMusic : public Luna<ScreenNetSelectMusic>
+{
+public:
+	static int GetMusicWheel(T* p, lua_State *L) {
+		p->GetMusicWheel()->PushSelf(L);
+		return 1;
+	}
+	static int SelectCurrent(T* p, lua_State *L) {
+		p->SelectCurrent();
+		return 1;
+	}
+	LunaScreenNetSelectMusic()
+	{
+		ADD_METHOD(GetMusicWheel);
+		ADD_METHOD(SelectCurrent);
+	}
+};
+
+LUA_REGISTER_DERIVED_CLASS(ScreenNetSelectMusic, ScreenNetSelectBase)
+// lua end
 
 #endif
 

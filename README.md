@@ -6,7 +6,7 @@ StepMania is an advanced cross-platform rhythm game for home and arcade use.
 Advanced cross-platform rhythm game for home and arcade use.
 
 [![Build Status](https://travis-ci.org/stepmania/stepmania.svg?branch=master)](https://travis-ci.org/stepmania/stepmania)
-[![Build status](https://ci.appveyor.com/api/projects/status/e932dk2o3anki27p?svg=true)](https://ci.appveyor.com/project/wolfman2000/stepmania-wm87c)
+[![Build status](https://ci.appveyor.com/api/projects/status/uvoplsnyoats81r2?svg=true)](https://ci.appveyor.com/project/Nickito12/stepmania)
 
 ## Installation
 ### From Packages
@@ -40,6 +40,6 @@ In short- you can do anything you like with the game (including sell products ma
 
 For specific information/legalese:
 
-* All of the our source code is under the [MIT license](http://opensource.org/licenses/MIT).
+* All of our source code is under the [MIT license](http://opensource.org/licenses/MIT).
 * Any songs that are included within this repository are under the [<abbr title="Creative Commons Non-Commercial">CC-NC</abbr> license](https://creativecommons.org/).
 * The [MAD library](http://www.underbit.com/products/mad/) and [FFmpeg codecs](https://www.ffmpeg.org/) when built with our code use the [GPL license](http://www.gnu.org).

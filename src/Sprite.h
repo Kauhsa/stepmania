@@ -21,6 +21,7 @@ public:
 
 	Sprite();
 	Sprite( const Sprite &cpy );
+	Sprite &operator=( Sprite other );
 	virtual ~Sprite();
 
 	// See explanation in source.
@@ -77,6 +78,8 @@ public:
 	void AddImageCoords( float fX, float fY ); // in image pixel space
 	void SetEffectMode( EffectMode em ) { m_EffectMode = em; }
 
+	void LoadFromCached( const RString &sDir, const RString &sPath );
+	
 	void SetTexCoordVelocity(float fVelX, float fVelY);
 	/**
 	 * @brief Scale the Sprite while maintaining the aspect ratio.

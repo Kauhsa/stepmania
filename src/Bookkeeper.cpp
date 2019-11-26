@@ -4,13 +4,15 @@
 #include "RageLog.h"
 #include "IniFile.h"
 #include "GameConstantsAndTypes.h"
+#include "GameState.h"
 #include "SongManager.h"
 #include "RageFile.h"
 #include "XmlFile.h"
 #include "XmlFileUtil.h"
+#include "SpecialFiles.h"
 #include <ctime>
 
-Bookkeeper*	BOOKKEEPER = NULL;	// global and accessible from anywhere in our program
+Bookkeeper*	BOOKKEEPER = nullptr;	// global and accessible from anywhere in our program
 
 static const RString COINS_DAT = "Save/Coins.xml";
 
@@ -65,7 +67,7 @@ void Bookkeeper::LoadFromNode( const XNode *pNode )
 	}
 
 	const XNode *pData = pNode->GetChild( "Data" );
-	if( pData == NULL )
+	if( pData == nullptr )
 	{
 		LOG->Warn( "Error loading bookkeeping: Data node missing" );
 		return;
@@ -120,6 +122,17 @@ void Bookkeeper::ReadFromDisk()
 	if( !XmlFileUtil::LoadFromFileShowErrors(xml, COINS_DAT) )
 		return;
 
+    int numCoins = 0;
+    ReadCoinsFile(numCoins);
+
+	if ( numCoins < 0 )
+		numCoins = 0;
+	else if ( numCoins / PREFSMAN->m_iCoinsPerCredit > MAX_NUM_CREDITS )
+		numCoins = 0;
+
+    LOG->Trace("Number of Coins to Load on boot: %i", numCoins);
+    GAMESTATE->m_iCoins.Set(numCoins);
+
 	LoadFromNode( &xml );
 }
 
@@ -133,16 +146,30 @@ void Bookkeeper::WriteToDisk()
 		return;
 	}
 
-	auto_ptr<XNode> xml( CreateNode() );
+	std::unique_ptr<XNode> xml( CreateNode() );
 	XmlFileUtil::SaveToFile( xml.get(), f );
 }
 
 void Bookkeeper::CoinInserted()
 {
  	Date d;
-	d.Set( time(NULL) );
+	d.Set( time(nullptr) );
 
 	++m_mapCoinsForHour[d];
+}
+
+void Bookkeeper::WriteCoinsFile( int coins )
+{
+    IniFile ini;
+    ini.SetValue( "Bookkeeping", "Coins", coins);
+    ini.WriteFile( SpecialFiles::COINS_INI );
+}
+
+void Bookkeeper::ReadCoinsFile( int &coins )
+{
+    IniFile ini;
+    ini.ReadFile( SpecialFiles::COINS_INI );
+    ini.GetValue( "Bookkeeping", "Coins", coins);
 }
 
 // Return the number of coins between [beginning,ending).
@@ -172,7 +199,7 @@ int Bookkeeper::GetCoinsTotal() const
 
 void Bookkeeper::GetCoinsLastDays( int coins[NUM_LAST_DAYS] ) const
 {
-	time_t lOldTime = time(NULL);
+	time_t lOldTime = time(nullptr);
 	tm time;
 	localtime_r( &lOldTime, &time );
 
@@ -188,7 +215,7 @@ void Bookkeeper::GetCoinsLastDays( int coins[NUM_LAST_DAYS] ) const
 
 void Bookkeeper::GetCoinsLastWeeks( int coins[NUM_LAST_WEEKS] ) const
 {
-	time_t lOldTime = time(NULL);
+	time_t lOldTime = time(nullptr);
 	tm time;
 	localtime_r( &lOldTime, &time );
 

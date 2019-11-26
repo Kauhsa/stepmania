@@ -10,35 +10,27 @@
 #include "RageSurface.h"
 #include "RageSurfaceUtils.h"
 #include "EnumHelper.h"
-#include "DisplayResolutions.h"
+#include "DisplaySpec.h"
 #include "LocalizedString.h"
 
-#include <D3dx9tex.h>
 #include <d3d9.h>
-#include <dxerr.h>
 
 #include "archutils/Win32/GraphicsWindow.h"
+#include "archutils/Win32/DirectXHelpers.h"
 
 // Static libraries
 // load Windows D3D9 dynamically
 #if defined(_MSC_VER)
 	#pragma comment(lib, "d3d9.lib")
-	#pragma comment(lib, "d3dx9.lib")
-	#pragma comment(lib, "DxErr.lib")
 #endif
 
 #include <math.h>
 #include <list>
 
-RString GetErrorString( HRESULT hr )
-{
-	return DXGetErrorString(hr);
-}
-
 // Globals
-HMODULE				g_D3D9_Module = NULL;
-LPDIRECT3D9			g_pd3d = NULL;
-LPDIRECT3DDEVICE9	g_pd3dDevice = NULL;
+HMODULE				g_D3D9_Module = nullptr;
+LPDIRECT3D9			g_pd3d = nullptr;
+LPDIRECT3DDEVICE9	g_pd3dDevice = nullptr;
 D3DCAPS9			g_DeviceCaps;
 D3DDISPLAYMODE		g_DesktopMode;
 D3DPRESENT_PARAMETERS	g_d3dpp;
@@ -52,13 +44,13 @@ const D3DFORMAT g_DefaultAdapterFormat = D3DFMT_X8R8G8B8;
 /* Direct3D doesn't associate a palette with textures. Instead, we load a
  * palette into a slot. We need to keep track of which texture's palette is
  * stored in what slot. */
-map<unsigned,int>		g_TexResourceToPaletteIndex;
-list<int>			g_PaletteIndex;
+std::map<uintptr_t, size_t>		g_TexResourceToPaletteIndex;
+std::list<size_t>			g_PaletteIndex;
 struct TexturePalette { PALETTEENTRY p[256]; };
-map<unsigned,TexturePalette>	g_TexResourceToTexturePalette;
+std::map<uintptr_t, TexturePalette>	g_TexResourceToTexturePalette;
 
 // Load the palette, if any, for the given texture into a palette slot, and make it current.
-static void SetPalette( unsigned TexResource )
+static void SetPalette( uintptr_t TexResource )
 {
 	// If the texture isn't paletted, we have nothing to do.
 	if( g_TexResourceToTexturePalette.find(TexResource) == g_TexResourceToTexturePalette.end() )
@@ -68,10 +60,10 @@ static void SetPalette( unsigned TexResource )
 	if( g_TexResourceToPaletteIndex.find(TexResource) == g_TexResourceToPaletteIndex.end() )
 	{
 		// It's not. Grab the least recently used slot.
-		int iPalIndex = g_PaletteIndex.front();
+		UINT iPalIndex = static_cast<UINT>(g_PaletteIndex.front());
 
 		// If any other texture is currently using this slot, mark that palette unloaded.
-		for( map<unsigned,int>::iterator i = g_TexResourceToPaletteIndex.begin(); i != g_TexResourceToPaletteIndex.end(); ++i )
+		for( std::map<uintptr_t, size_t>::iterator i = g_TexResourceToPaletteIndex.begin(); i != g_TexResourceToPaletteIndex.end(); ++i )
 		{
 			if( i->second != iPalIndex )
 				continue;
@@ -89,7 +81,7 @@ static void SetPalette( unsigned TexResource )
 	const int iPalIndex = g_TexResourceToPaletteIndex[TexResource];
 
 	// Find this palette index in the least-recently-used queue and move it to the end.
-	for(list<int>::iterator i = g_PaletteIndex.begin(); i != g_PaletteIndex.end(); ++i)
+	for(std::list<size_t>::iterator i = g_PaletteIndex.begin(); i != g_PaletteIndex.end(); ++i)
 	{
 		if( *i != iPalIndex )
 			continue;
@@ -252,13 +244,13 @@ RageDisplay_D3D::~RageDisplay_D3D()
 	if( g_pd3dDevice )
 	{
 		g_pd3dDevice->Release();
-		g_pd3dDevice = NULL;
+		g_pd3dDevice = nullptr;
 	}
 
 	if( g_pd3d )
 	{
 		g_pd3d->Release();
-		g_pd3d = NULL;
+		g_pd3d = nullptr;
 	}
 
 	/* Even after we call Release(), D3D may still affect our window. It seems
@@ -267,23 +259,43 @@ RageDisplay_D3D::~RageDisplay_D3D()
 	if( g_D3D9_Module )
 	{
 		FreeLibrary( g_D3D9_Module );
-		g_D3D9_Module = NULL;
+		g_D3D9_Module = nullptr;
 	}
 }
 
-void RageDisplay_D3D::GetDisplayResolutions( DisplayResolutions &out ) const
+void RageDisplay_D3D::GetDisplaySpecs( DisplaySpecs &out ) const
 {
 	out.clear();
 	int iCnt = g_pd3d->GetAdapterModeCount( D3DADAPTER_DEFAULT, g_DefaultAdapterFormat );
 
-	for( int i = 0; i < iCnt; ++i )
+	std::set<DisplayMode> modes;
+	D3DDISPLAYMODE mode;
+	for ( int i = 0; i < iCnt; ++i )
 	{
-		D3DDISPLAYMODE mode;
 		g_pd3d->EnumAdapterModes( D3DADAPTER_DEFAULT, g_DefaultAdapterFormat, i, &mode );
-
-		DisplayResolution res = { mode.Width, mode.Height };
-		out.insert( res );
+		modes.insert( { mode.Width, mode.Height, static_cast<double> (mode.RefreshRate) } );
 	}
+
+	// Get the current display mode
+	if ( g_pd3d->GetAdapterDisplayMode( D3DADAPTER_DEFAULT, &mode ) == D3D_OK )
+	{
+		D3DADAPTER_IDENTIFIER9 ID;
+		g_pd3d->GetAdapterIdentifier( D3DADAPTER_DEFAULT, 0, &ID );
+		DisplayMode active = { mode.Width, mode.Height, static_cast<double> (mode.RefreshRate) };
+		RectI bounds( 0, 0, active.width, active.height );
+		out.insert( DisplaySpec( "", "Fullscreen", modes, active, bounds ) );
+	}
+	else
+	{
+		LOG->Warn( "Could not find active mode for default D3D adapter" );
+		if ( !modes.empty() )
+		{
+			const DisplayMode &m = *modes.begin();
+			RectI bounds( 0, 0, m.width, m.height );
+			out.insert( DisplaySpec( "", "Fullscreen", modes, m, bounds ) );
+		}
+	}
+
 }
 
 D3DFORMAT FindBackBufferType(bool bWindowed, int iBPP)
@@ -315,7 +327,7 @@ D3DFORMAT FindBackBufferType(bool bWindowed, int iBPP)
 	}
 
 	// Test each back buffer format until we find something that works.
-	for( unsigned i=0; i < vBackBufferFormats.size(); i++ )
+	for( size_t i=0; i < vBackBufferFormats.size(); i++ )
 	{
 		D3DFORMAT fmtBackBuffer = vBackBufferFormats[i];
 
@@ -345,7 +357,7 @@ D3DFORMAT FindBackBufferType(bool bWindowed, int iBPP)
 
 RString SetD3DParams( bool &bNewDeviceOut )
 {
-	if( g_pd3dDevice == NULL ) // device is not yet created. We need to create it
+	if( g_pd3dDevice == nullptr ) // device is not yet created. We need to create it
 	{
 		bNewDeviceOut = true;
 		HRESULT hr = g_pd3d->CreateDevice(
@@ -574,7 +586,7 @@ bool RageDisplay_D3D::BeginFrame()
 		}
 	}
 
-	g_pd3dDevice->Clear( 0, NULL, D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,
+	g_pd3dDevice->Clear( 0, nullptr, D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,
 						 D3DCOLOR_XRGB(0,0,0), 1.0f, 0x00000000 );
 	g_pd3dDevice->BeginScene();
 
@@ -622,24 +634,25 @@ bool RageDisplay_D3D::SupportsThreadedRendering()
 
 RageSurface* RageDisplay_D3D::CreateScreenshot()
 {
-	RageSurface * result = NULL;
+	RageSurface * result = nullptr;
 
-	// Get the back buffer.
+	// get the render target
 	IDirect3DSurface9* pSurface;
-	if( SUCCEEDED( g_pd3dDevice->GetBackBuffer( 0, 0, D3DBACKBUFFER_TYPE_MONO, &pSurface ) ) )
+	if (SUCCEEDED(g_pd3dDevice->GetRenderTarget(0, &pSurface)))
 	{
-		// Get the back buffer description.
+		// get the render target surface description
 		D3DSURFACE_DESC desc;
-		pSurface->GetDesc( &desc );
+		pSurface->GetDesc(&desc);
 
-		// Copy the back buffer into a surface of a type we support.
+		// create an offscreen plain surface of the same format in the SYSTEMMEM pool
 		IDirect3DSurface9* pCopy;
-		if( SUCCEEDED( g_pd3dDevice->CreateOffscreenPlainSurface( desc.Width, desc.Height, D3DFMT_A8R8G8B8, D3DPOOL_SCRATCH, &pCopy, NULL ) ) )
+		if (SUCCEEDED(g_pd3dDevice->CreateOffscreenPlainSurface(desc.Width, desc.Height, desc.Format, D3DPOOL_SYSTEMMEM, &pCopy, nullptr)))
 		{
-			if( SUCCEEDED( D3DXLoadSurfaceFromSurface( pCopy, NULL, NULL, pSurface, NULL, NULL, D3DX_FILTER_NONE, 0) ) )
+			// copy the data from the render target into the offscreen plain surface
+			if (SUCCEEDED(g_pd3dDevice->GetRenderTargetData(pSurface, pCopy)))
 			{
 				// Update desc from the copy.
-				pCopy->GetDesc( &desc );
+				pCopy->GetDesc(&desc);
 
 				D3DLOCKED_RECT lr;
 
@@ -650,19 +663,33 @@ RageSurface* RageDisplay_D3D::CreateScreenshot()
 					rect.right = desc.Width;
 					rect.bottom = desc.Height;
 
-					pCopy->LockRect( &lr, &rect, D3DLOCK_READONLY );
+					pCopy->LockRect(&lr, &rect, D3DLOCK_READONLY);
 				}
 
-				RageSurface *surface = CreateSurfaceFromPixfmt( RagePixelFormat_RGBA8, lr.pBits, desc.Width, desc.Height, lr.Pitch);
-				ASSERT( surface != NULL );
+				// since we no longer have an easy function to force a conversion to A8R8G8B8, we need to figure out our pixel format.
+				// (yes, we could create a couple of surfaces in the default pool, copy the bits into the one matching our source,
+				// then use IDirect3DDevice::StretchRect to convert it without stretching into our desired format. This would mean
+				// a copy to device memory and a copy back again, though.)
+				// possible formats are found in FindBackBufferType
+				RagePixelFormat pf;
+				switch (desc.Format)
+				{
+				default:               pf = RagePixelFormat_Invalid; FAIL_M("Unknown pixel format");  break;
+				case D3DFMT_X8R8G8B8:  pf = RagePixelFormat_RGBA8; break;
+				case D3DFMT_A8R8G8B8:  pf = RagePixelFormat_RGBA8; break;
+					// 16-bit formats are not here. Does anybody actually use them? 
+				}
+
+				RageSurface *surface = CreateSurfaceFromPixfmt(pf, lr.pBits, desc.Width, desc.Height, lr.Pitch);
+				ASSERT(nullptr != surface);
 
 				// We need to make a copy, since lr.pBits will go away when we call UnlockRect().
-				result = 
-					CreateSurface( surface->w, surface->h,
+				result =
+					CreateSurface(surface->w, surface->h,
 						surface->format->BitsPerPixel,
 						surface->format->Rmask, surface->format->Gmask,
-						surface->format->Bmask, surface->format->Amask );
-				RageSurfaceUtils::CopySurface( surface, result );
+						surface->format->Bmask, surface->format->Amask);
+				RageSurfaceUtils::CopySurface(surface, result);
 				delete surface;
 
 				pCopy->UnlockRect();
@@ -677,10 +704,9 @@ RageSurface* RageDisplay_D3D::CreateScreenshot()
 	return result;
 }
 
-VideoModeParams RageDisplay_D3D::GetActualVideoModeParams() const 
+ActualVideoModeParams RageDisplay_D3D::GetActualVideoModeParams() const
 {
-	VideoModeParams p = GraphicsWindow::GetParams(); 
-	return p; 
+	return GraphicsWindow::GetParams();
 }
 
 void RageDisplay_D3D::SendCurrentMatrices()
@@ -703,9 +729,9 @@ void RageDisplay_D3D::SendCurrentMatrices()
 		g_pd3dDevice->SetTextureStageState( tu, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT2 );
 
 		// If no texture is set for this texture unit, don't bother setting it up.
-		IDirect3DBaseTexture9* pTexture = NULL;
+		IDirect3DBaseTexture9* pTexture = nullptr;
 		g_pd3dDevice->GetTexture( tu, &pTexture );
-		if( pTexture == NULL )
+		if( pTexture == nullptr )
 			 continue;
 		pTexture->Release();
 
@@ -756,18 +782,18 @@ public:
 	}
 	void Change( const vector<msMesh> &vMeshes )
 	{
-		for( unsigned i=0; i<vMeshes.size(); i++ )
+		for( size_t i=0; i<vMeshes.size(); i++ )
 		{
 			const MeshInfo& meshInfo = m_vMeshInfo[i];
 			const msMesh& mesh = vMeshes[i];
 			const vector<RageModelVertex> &Vertices = mesh.Vertices;
 			const vector<msTriangle> &Triangles = mesh.Triangles;
 
-			for( unsigned j=0; j<Vertices.size(); j++ )
+			for( size_t j=0; j<Vertices.size(); j++ )
 				m_vVertex[meshInfo.iVertexStart+j] = Vertices[j];
 
-			for( unsigned j=0; j<Triangles.size(); j++ )
-				for( unsigned k=0; k<3; k++ )
+			for( size_t j=0; j<Triangles.size(); j++ )
+				for( size_t k=0; k<3; k++ )
 					m_vTriangles[meshInfo.iTriangleStart+j].nVertexIndices[k] = (uint16_t) meshInfo.iVertexStart + Triangles[j].nVertexIndices[k];
 		}
 	}
@@ -825,8 +851,8 @@ void RageDisplay_D3D::DrawQuadsInternal( const RageSpriteVertex v[], int iNumVer
 
 	// make a temporary index buffer
 	static vector<uint16_t> vIndices;
-	unsigned uOldSize = vIndices.size();
-	unsigned uNewSize = max(uOldSize,(unsigned)iNumIndices);
+	size_t uOldSize = vIndices.size();
+	size_t uNewSize = max(uOldSize, static_cast<size_t>(iNumIndices));
 	vIndices.resize( uNewSize );
 	for( uint16_t i=(uint16_t)uOldSize/6; i<(uint16_t)iNumQuads; i++ )
 	{
@@ -861,8 +887,8 @@ void RageDisplay_D3D::DrawQuadStripInternal( const RageSpriteVertex v[], int iNu
 
 	// make a temporary index buffer
 	static vector<uint16_t> vIndices;
-	unsigned uOldSize = vIndices.size();
-	unsigned uNewSize = max(uOldSize,(unsigned)iNumIndices);
+	size_t uOldSize = vIndices.size();
+	size_t uNewSize = max(uOldSize, static_cast<size_t>(iNumIndices));
 	vIndices.resize( uNewSize );
 	for( uint16_t i=(uint16_t)uOldSize/6; i<(uint16_t)iNumQuads; i++ )
 	{
@@ -896,8 +922,8 @@ void RageDisplay_D3D::DrawSymmetricQuadStripInternal( const RageSpriteVertex v[]
 
 	// make a temporary index buffer
 	static vector<uint16_t> vIndices;
-	unsigned uOldSize = vIndices.size();
-	unsigned uNewSize = max(uOldSize,(unsigned)iNumIndices);
+	size_t uOldSize = vIndices.size();
+	size_t uNewSize = max(uOldSize, static_cast<size_t>(iNumIndices));
 	vIndices.resize( uNewSize );
 	for( uint16_t i=(uint16_t)uOldSize/12; i<(uint16_t)iNumPieces; i++ )
 	{
@@ -1022,7 +1048,7 @@ int RageDisplay_D3D::GetNumTextureUnits()
 	return g_DeviceCaps.MaxSimultaneousTextures;
 }
 
-void RageDisplay_D3D::SetTexture( TextureUnit tu, unsigned iTexture )
+void RageDisplay_D3D::SetTexture( TextureUnit tu, uintptr_t iTexture )
 {
 //	g_DeviceCaps.MaxSimultaneousTextures = 1;
 	if( tu >= (int) g_DeviceCaps.MaxSimultaneousTextures )	// not supported
@@ -1030,7 +1056,7 @@ void RageDisplay_D3D::SetTexture( TextureUnit tu, unsigned iTexture )
 
 	if( iTexture == 0 )
 	{
-		g_pd3dDevice->SetTexture( tu, NULL );
+		g_pd3dDevice->SetTexture( tu, nullptr );
 
 		/* Intentionally commented out. Don't mess with texture stage state
 		 * when just setting the texture. Model sets its texture modes before
@@ -1039,7 +1065,7 @@ void RageDisplay_D3D::SetTexture( TextureUnit tu, unsigned iTexture )
 	}
 	else
 	{
-		IDirect3DTexture9* pTex = (IDirect3DTexture9*) iTexture;
+		IDirect3DTexture9* pTex = reinterpret_cast<IDirect3DTexture9*>(iTexture);
 		g_pd3dDevice->SetTexture( tu, pTex );
 
 		/* Intentionally commented out. Don't mess with texture stage state
@@ -1117,9 +1143,9 @@ void RageDisplay_D3D::SetBlendMode( BlendMode mode )
 		g_pd3dDevice->SetRenderState( D3DRS_SRCBLEND,  D3DBLEND_SRCALPHA );
 		g_pd3dDevice->SetRenderState( D3DRS_DESTBLEND, D3DBLEND_ONE );
 		break;
-		// This is not the right way to do BLEND_SUBTRACT.  This code is only here
-		// to prevent crashing when someone tries to use it. -Kyz
-		case BLEND_SUBTRACT:
+	// This is not the right way to do BLEND_SUBTRACT.  This code is only here
+	// to prevent crashing when someone tries to use it. -Kyz
+	case BLEND_SUBTRACT:
 		g_pd3dDevice->SetRenderState( D3DRS_SRCBLEND,  D3DBLEND_SRCALPHA );
 		g_pd3dDevice->SetRenderState( D3DRS_DESTBLEND, D3DBLEND_ZERO );
 		break;
@@ -1222,7 +1248,7 @@ void RageDisplay_D3D::SetZTestMode( ZTestMode mode )
 
 void RageDisplay_D3D::ClearZBuffer()
 {
-	g_pd3dDevice->Clear( 0, NULL, D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(0,0,0), 1.0f, 0x00000000 );
+	g_pd3dDevice->Clear( 0, nullptr, D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(0,0,0), 1.0f, 0x00000000 );
 }
 
 void RageDisplay_D3D::SetTextureWrapping( TextureUnit tu, bool b )
@@ -1330,12 +1356,12 @@ void RageDisplay_D3D::SetCullMode( CullMode mode )
 	}
 }
 
-void RageDisplay_D3D::DeleteTexture( unsigned iTexHandle )
+void RageDisplay_D3D::DeleteTexture( uintptr_t iTexHandle )
 {
 	if( iTexHandle == 0 )
 		return;
 
-	IDirect3DTexture9* pTex = (IDirect3DTexture9*) iTexHandle;
+	IDirect3DTexture9* pTex = reinterpret_cast<IDirect3DTexture9*>(iTexHandle);
 	pTex->Release();
 
 	// Delete palette (if any)
@@ -1346,20 +1372,20 @@ void RageDisplay_D3D::DeleteTexture( unsigned iTexHandle )
 }
 
 
-unsigned RageDisplay_D3D::CreateTexture( 
+uintptr_t RageDisplay_D3D::CreateTexture( 
 	RagePixelFormat pixfmt,
 	RageSurface* img,
 	bool bGenerateMipMaps )
 {
 	HRESULT hr;
 	IDirect3DTexture9* pTex;
-	hr = g_pd3dDevice->CreateTexture( power_of_two(img->w), power_of_two(img->h), 1, 0, D3DFORMATS[pixfmt], D3DPOOL_MANAGED, &pTex, NULL );
+	hr = g_pd3dDevice->CreateTexture( power_of_two(img->w), power_of_two(img->h), 1, 0, D3DFORMATS[pixfmt], D3DPOOL_MANAGED, &pTex, nullptr );
 
 	if( FAILED(hr) )
 		RageException::Throw( "CreateTexture(%i,%i,%s) failed: %s", 
 		img->w, img->h, RagePixelFormatToString(pixfmt).c_str(), GetErrorString(hr).c_str() );
 
-	unsigned uTexHandle = (unsigned)pTex;
+	uintptr_t uTexHandle = reinterpret_cast<uintptr_t>(pTex);
 
 	if( pixfmt == RagePixelFormat_PAL )
 	{
@@ -1385,12 +1411,12 @@ unsigned RageDisplay_D3D::CreateTexture(
 }
 
 void RageDisplay_D3D::UpdateTexture( 
-	unsigned uTexHandle, 
+	uintptr_t uTexHandle, 
 	RageSurface* img,
 	int xoffset, int yoffset, int width, int height )
 {
-	IDirect3DTexture9* pTex = (IDirect3DTexture9*)uTexHandle;
-	ASSERT( pTex != NULL );
+	IDirect3DTexture9* pTex = reinterpret_cast<IDirect3DTexture9*>(uTexHandle);
+	ASSERT( pTex != nullptr );
 
 	RECT rect; 
 	rect.left = xoffset;
@@ -1413,7 +1439,7 @@ void RageDisplay_D3D::UpdateTexture(
 	ASSERT( texpixfmt != NUM_RagePixelFormat );
 
 	RageSurface *Texture = CreateSurfaceFromPixfmt(RagePixelFormat(texpixfmt), lr.pBits, width, height, lr.Pitch);
-	ASSERT( Texture != NULL );
+	ASSERT( Texture != nullptr );
 	RageSurfaceUtils::Blit( img, Texture, width, height );
 
 	delete Texture;

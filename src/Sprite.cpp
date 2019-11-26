@@ -11,9 +11,11 @@
 #include "RageTimer.h"
 #include "RageUtil.h"
 #include "ActorUtil.h"
-#include "Foreach.h"
 #include "LuaBinding.h"
 #include "LuaManager.h"
+#include "ImageCache.h"
+#include "ThemeMetric.h"
+#include <numeric>
 
 REGISTER_ACTOR_CLASS( Sprite );
 
@@ -21,7 +23,7 @@ const float min_state_delay= 0.0001f;
 
 Sprite::Sprite()
 {
-	m_pTexture = NULL;
+	m_pTexture = nullptr;
 	m_iCurState = 0;
 	m_fSecsIntoState = 0.0f;
 	m_animation_length_seconds= 0.0f;
@@ -78,10 +80,35 @@ Sprite::Sprite( const Sprite &cpy ):
 	CPY(m_use_effect_clock_for_texcoords);
 #undef CPY
 
-	if( cpy.m_pTexture != NULL )
+	if( cpy.m_pTexture != nullptr )
 		m_pTexture = TEXTUREMAN->CopyTexture( cpy.m_pTexture );
 	else
-		m_pTexture = NULL;
+		m_pTexture = nullptr;
+}
+
+Sprite &Sprite::operator=( Sprite other )
+{
+	using std::swap;
+#define SWAP(a) swap(a, other.a)
+	SWAP( m_States );
+	SWAP(m_animation_length_seconds);
+	SWAP( m_iCurState );
+	SWAP( m_fSecsIntoState );
+	SWAP( m_bUsingCustomTexCoords );
+	SWAP( m_bUsingCustomPosCoords );
+	SWAP( m_bSkipNextUpdate );
+	SWAP( m_DecodeMovie );
+	SWAP( m_EffectMode );
+	memcpy( m_CustomTexCoords, other.m_CustomTexCoords, sizeof(m_CustomTexCoords) );
+	memcpy( m_CustomPosCoords, other.m_CustomPosCoords, sizeof(m_CustomPosCoords) );
+	SWAP( m_fRememberedClipWidth );
+	SWAP( m_fRememberedClipHeight );
+	SWAP( m_fTexCoordVelocityX );
+	SWAP( m_fTexCoordVelocityY );
+	SWAP(m_use_effect_clock_for_texcoords);
+	SWAP(m_pTexture);
+#undef SWAP
+	return *this;
 }
 
 void Sprite::InitState()
@@ -174,7 +201,7 @@ void Sprite::LoadFromNode( const XNode* pNode )
 		vector<State> aStates;
 
 		const XNode *pFrames = pNode->GetChild( "Frames" );
-		if( pFrames != NULL )
+		if( pFrames != nullptr )
 		{
 			/* All attributes are optional.  If Frame is omitted, use the previous state's
 			 * frame (or 0 if the first).
@@ -186,7 +213,7 @@ void Sprite::LoadFromNode( const XNode* pNode )
 			for( int i=0; true; i++ )
 			{
 				const XNode *pFrame = pFrames->GetChild( ssprintf("%i", i+1) ); // +1 for Lua's arrays
-				if( pFrame == NULL )
+				if( pFrame == nullptr )
 					break;
 
 				State newState;
@@ -204,7 +231,7 @@ void Sprite::LoadFromNode( const XNode* pNode )
 				newState.rect = *m_pTexture->GetTextureCoordRect( iFrameIndex );
 
 				const XNode *pPoints[2] = { pFrame->GetChild( "1" ), pFrame->GetChild( "2" ) };
-				if( pPoints[0] != NULL && pPoints[1] != NULL )
+				if( pPoints[0] != nullptr && pPoints[1] != nullptr )
 				{
 					RectF r = newState.rect;
 
@@ -259,10 +286,10 @@ void Sprite::LoadFromNode( const XNode* pNode )
 
 void Sprite::UnloadTexture()
 {
-	if( m_pTexture != NULL ) // If there was a previous bitmap...
+	if( m_pTexture != nullptr ) // If there was a previous bitmap...
 	{
 		TEXTUREMAN->UnloadTexture( m_pTexture ); // Unload it.
-		m_pTexture = NULL;
+		m_pTexture = nullptr;
 
 		/* Make sure we're reset to frame 0, so if we're reused, we aren't left
 		 * on a frame number that may be greater than the number of frames in
@@ -300,7 +327,7 @@ void Sprite::EnableAnimation( bool bEnable )
 
 void Sprite::SetTexture( RageTexture *pTexture )
 {
-	ASSERT( pTexture != NULL );
+	ASSERT( pTexture != nullptr );
 
 	if( m_pTexture != pTexture )
 	{
@@ -328,7 +355,7 @@ void Sprite::LoadFromTexture( RageTextureID ID )
 {
 	// LOG->Trace( "Sprite::LoadFromTexture( %s )", ID.filename.c_str() );
 
-	RageTexture *pTexture = NULL;
+	RageTexture *pTexture = nullptr;
 	if( m_pTexture && m_pTexture->GetID() == ID )
 		pTexture = m_pTexture;
 	else
@@ -337,12 +364,33 @@ void Sprite::LoadFromTexture( RageTextureID ID )
 	SetTexture( pTexture );
 }
 
+void Sprite::LoadFromCached( const RString &sDir, const RString &sPath )
+{
+	if( sPath.empty() )
+	{
+		Load( THEME->GetPathG("Common","fallback %s", sDir) );
+		return;
+	}
+
+	RageTextureID ID;
+	
+	// Try to load the low quality version.
+	ID = IMAGECACHE->LoadCachedImage( sDir, sPath );
+
+	if( TEXTUREMAN->IsTextureRegistered(ID) )
+		Load( ID );
+	else if( IsAFile(sPath) )
+		Load( sPath );
+	else
+		Load( THEME->GetPathG("Common","fallback %s", sDir) );
+}
+
 void Sprite::LoadStatesFromTexture()
 {
 	// Assume the frames of this animation play in sequential order with 0.1 second delay.
 	m_States.clear();
 
-	if( m_pTexture == NULL )
+	if( m_pTexture == nullptr )
 	{
 		State newState;
 		newState.fDelay = 0.1f;
@@ -616,7 +664,7 @@ void Sprite::DrawTexture( const TweenState *state )
 
 bool Sprite::EarlyAbortDraw() const
 {
-	return m_pTexture == NULL;
+	return m_pTexture == nullptr;
 }
 
 void Sprite::DrawPrimitives()
@@ -794,9 +842,9 @@ void Sprite::SetState( int iNewState )
 void Sprite::RecalcAnimationLengthSeconds()
 {
 	m_animation_length_seconds = 0;
-	FOREACH_CONST(State, m_States, s)
+	for (State const &s : m_States)
 	{
-		m_animation_length_seconds += s->fDelay;
+		m_animation_length_seconds += s.fDelay;
 	}
 }
 
@@ -811,7 +859,7 @@ void Sprite::SetSecondsIntoAnimation( float fSeconds )
 
 RString	Sprite::GetTexturePath() const
 {
-	if( m_pTexture==NULL )
+	if( m_pTexture == nullptr )
 		return RString();
 
 	return m_pTexture->GetID().filename;
@@ -934,7 +982,7 @@ void Sprite::ScaleToClipped( float fWidth, float fHeight )
 		Sprite::ScaleToCover( RectF(0, 0, fWidth, fHeight) );
 		// find which dimension is larger
 		bool bXDimNeedsToBeCropped = GetZoomedWidth() > fWidth+0.01;
-		
+
 		if( bXDimNeedsToBeCropped ) // crop X
 		{
 			float fPercentageToCutOff = (this->GetZoomedWidth() - fWidth) / this->GetZoomedWidth();
@@ -943,9 +991,9 @@ void Sprite::ScaleToClipped( float fWidth, float fHeight )
 
 			// generate a rectangle with new texture coordinates
 			RectF fCustomImageRect( 
-				fPercentageToCutOffEachSide, 
-				0, 
-				1 - fPercentageToCutOffEachSide, 
+				fPercentageToCutOffEachSide,
+				0,
+				1 - fPercentageToCutOffEachSide,
 				1 );
 			SetCustomImageRect( fCustomImageRect );
 		}
@@ -957,9 +1005,9 @@ void Sprite::ScaleToClipped( float fWidth, float fHeight )
 
 			// generate a rectangle with new texture coordinates
 			RectF fCustomImageRect( 
-				0, 
+				0,
 				fPercentageToCutOffEachSide,
-				1, 
+				1,
 				1 - fPercentageToCutOffEachSide );
 			SetCustomImageRect( fCustomImageRect );
 		}
@@ -995,7 +1043,7 @@ void Sprite::CropTo( float fWidth, float fHeight )
 		Sprite::ScaleToCover( RectF(0, 0, fWidth, fHeight) );
 		// find which dimension is larger
 		bool bXDimNeedsToBeCropped = GetZoomedWidth() > fWidth+0.01;
-		
+
 		if( bXDimNeedsToBeCropped )	// crop X
 		{
 			float fPercentageToCutOff = (this->GetZoomedWidth() - fWidth) / this->GetZoomedWidth();
@@ -1003,9 +1051,9 @@ void Sprite::CropTo( float fWidth, float fHeight )
 
 			// generate a rectangle with new texture coordinates
 			RectF fCustomImageRect( 
-				fPercentageToCutOffEachSide, 
-				0, 
-				1 - fPercentageToCutOffEachSide, 
+				fPercentageToCutOffEachSide,
+				0,
+				1 - fPercentageToCutOffEachSide,
 				1 );
 			SetCustomImageRect( fCustomImageRect );
 		}
@@ -1016,9 +1064,9 @@ void Sprite::CropTo( float fWidth, float fHeight )
 
 			// generate a rectangle with new texture coordinates
 			RectF fCustomImageRect( 
-				0, 
+				0,
 				fPercentageToCutOffEachSide,
-				1, 
+				1,
 				1 - fPercentageToCutOffEachSide );
 			SetCustomImageRect( fCustomImageRect );
 		}
@@ -1076,6 +1124,11 @@ public:
 		else
 		{
 			RageTextureID ID( SArg(1) );
+			if(lua_isstring(L, 2))
+			{
+				RString additional_hints= SArg(2);
+				ID.AdditionalTextureHints= additional_hints;
+			}
 			p->Load( ID );
 		}
 		COMMON_RETURN_SELF;
@@ -1222,7 +1275,7 @@ public:
 	static int GetTexture( T* p, lua_State *L )
 	{
 		RageTexture *pTexture = p->GetTexture();
-		if( pTexture != NULL )
+		if( pTexture != nullptr )
 			pTexture->PushSelf(L);
 		else
 			lua_pushnil( L );
@@ -1246,12 +1299,18 @@ public:
 		p->m_DecodeMovie= BArg(1);
 		COMMON_RETURN_SELF;
 	}
+	static int LoadFromCached( T* p, lua_State *L )
+	{ 
+		p->LoadFromCached( SArg(1), SArg(2) );
+		COMMON_RETURN_SELF;
+	}
 
 	LunaSprite()
 	{
 		ADD_METHOD( Load );
 		ADD_METHOD( LoadBanner );
 		ADD_METHOD( LoadBackground );
+		ADD_METHOD( LoadFromCached );
 		ADD_METHOD( customtexturerect );
 		ADD_METHOD( SetCustomImageRect );
 		ADD_METHOD( SetCustomPosCoords );

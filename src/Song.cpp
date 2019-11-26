@@ -12,9 +12,10 @@
 #include "Style.h"
 #include "FontCharAliases.h"
 #include "TitleSubstitution.h"
-#include "BannerCache.h"
-//#include "BackgroundCache.h"
+#include "ImageCache.h"
+#include "ProfileManager.h"
 #include "Sprite.h"
+#include "RageFile.h"
 #include "RageFileManager.h"
 #include "RageSurface.h"
 #include "RageTextureManager.h"
@@ -22,7 +23,6 @@
 #include "SongUtil.h"
 #include "SongManager.h"
 #include "StepsUtil.h"
-#include "Foreach.h"
 #include "BackgroundUtil.h"
 #include "SpecialFiles.h"
 #include "NotesLoader.h"
@@ -35,11 +35,14 @@
 #include "UnlockManager.h"
 #include "LyricsLoader.h"
 #include "ActorUtil.h"
+#include "CommonMetrics.h"
 
 #include <time.h>
 #include <set>
 #include <float.h>
 
+//-Nick12 Used for song file hashing
+#include <CryptManager.h>
 
 /**
  * @brief The internal version of the cache for StepMania.
@@ -86,16 +89,19 @@ Song::Song()
 	m_bHasBanner = false;
 	m_bHasBackground = false;
 	m_loaded_from_autosave= false;
+	split( CommonMetrics::IMAGES_TO_CACHE, ",", ImageDir );
 }
 
 Song::~Song()
 {
-	FOREACH( Steps*, m_vpSteps, s )
-		SAFE_DELETE( *s );
-	m_vpSteps.clear();
-	FOREACH(Steps*, m_UnknownStyleSteps, s)
+	for (Steps *s : m_vpSteps)
 	{
-		SAFE_DELETE(*s);
+		SAFE_DELETE( s );
+	}
+	m_vpSteps.clear();
+	for (Steps *s : m_UnknownStyleSteps)
+	{
+		SAFE_DELETE(s);
 	}
 	m_UnknownStyleSteps.clear();
 
@@ -159,14 +165,16 @@ void Song::SetSpecifiedLastSecond(const float f)
 // Reset to an empty song.
 void Song::Reset()
 {
-	FOREACH( Steps*, m_vpSteps, s )
-		SAFE_DELETE( *s );
+	for (Steps *s : m_vpSteps)
+	{	
+		SAFE_DELETE( s );
+	}
 	m_vpSteps.clear();
 	FOREACH_ENUM( StepsType, st )
 		m_vpStepsByType[st].clear();
-	FOREACH(Steps*, m_UnknownStyleSteps, s)
+	for (Steps *s : m_UnknownStyleSteps)
 	{
-		SAFE_DELETE(*s);
+		SAFE_DELETE(s);
 	}
 	m_UnknownStyleSteps.clear();
 
@@ -181,7 +189,8 @@ void Song::Reset()
 void Song::AddBackgroundChange( BackgroundLayer iLayer, BackgroundChange seg )
 {
 	// Delete old background change at this start beat, if any.
-	FOREACH( BackgroundChange, GetBackgroundChanges(iLayer), bgc )
+	auto &changes = GetBackgroundChanges(iLayer);
+	for (vector<BackgroundChange>::iterator bgc = changes.begin(); bgc != changes.end(); ++bgc)
 	{
 		if( bgc->m_fStartBeat == seg.m_fStartBeat )
 		{
@@ -269,7 +278,7 @@ static set<RString> BlacklistedImages;
  * HasMusic(), HasBanner() or GetHashForDirectory().
  * If true, check the directory hash and reload the song from scratch if it's changed.
  */
-bool Song::LoadFromSongDir( RString sDir, bool load_autosave )
+bool Song::LoadFromSongDir(RString sDir, bool load_autosave, ProfileSlot from_profile)
 {
 //	LOG->Trace( "Song::LoadFromSongDir(%s)", sDir.c_str() );
 	ASSERT_M( sDir != "", "Songs can't be loaded from an empty directory!" );
@@ -281,26 +290,40 @@ bool Song::LoadFromSongDir( RString sDir, bool load_autosave )
 	// save song dir
 	m_sSongDir = sDir;
 
+	bool use_cache = true;
+
 	// save group name
-	vector<RString> sDirectoryParts;
-	split( m_sSongDir, "/", sDirectoryParts, false );
-	ASSERT( sDirectoryParts.size() >= 4 ); /* e.g. "/Songs/Slow/Taps/" */
-	m_sGroupName = sDirectoryParts[sDirectoryParts.size()-3];	// second from last item
-	ASSERT( m_sGroupName != "" );
+	if(from_profile == ProfileSlot_Invalid)
+	{
+		vector<RString> sDirectoryParts;
+		split( m_sSongDir, "/", sDirectoryParts, false );
+		ASSERT( sDirectoryParts.size() >= 4 ); /* e.g. "/Songs/Slow/Taps/" */
+		m_sGroupName = sDirectoryParts[sDirectoryParts.size()-3];	// second from last item
+		ASSERT( m_sGroupName != "" );
+	}
+	else
+	{
+		m_LoadedFromProfile= from_profile;
+		m_sGroupName= PROFILEMAN->GetProfile(from_profile)->m_sDisplayName;
+		use_cache= false;
+	}
 
-	// First, look in the cache for this song (without loading NoteData)
-	unsigned uCacheHash = SONGINDEX->GetCacheHash(m_sSongDir);
-	bool bUseCache = true;
-	RString sCacheFilePath = GetCacheFilePath();
+	RString cache_file_path;
+	if(m_LoadedFromProfile == ProfileSlot_Invalid)
+	{
+		// First, look in the cache for this song (without loading NoteData)
+		unsigned uCacheHash = SONGINDEX->GetCacheHash(m_sSongDir);
+		cache_file_path = GetCacheFilePath();
 
-	if( !DoesFileExist(sCacheFilePath) )
-	{ bUseCache = false; }
-	else if(!PREFSMAN->m_bFastLoad && GetHashForDirectory(m_sSongDir) != uCacheHash)
-	{ bUseCache = false; } // this cache is out of date
-	else if(load_autosave)
-	{ bUseCache= false; }
+		if( !DoesFileExist(cache_file_path) )
+		{ use_cache = false; }
+		else if(!PREFSMAN->m_bFastLoad && GetHashForDirectory(m_sSongDir) != uCacheHash)
+		{ use_cache = false; } // this cache is out of date
+		else if(load_autosave)
+		{ use_cache= false; }
+	}
 
-	if( bUseCache )
+	if(use_cache)
 	{
 		/*
 		LOG->Trace("Loading '%s' from cache file '%s'.",
@@ -308,12 +331,12 @@ bool Song::LoadFromSongDir( RString sDir, bool load_autosave )
 				   GetCacheFilePath().c_str());
 		*/
 		SSCLoader loaderSSC;
-		bool bLoadedFromSSC = loaderSSC.LoadFromSimfile( sCacheFilePath, *this, true );
+		bool bLoadedFromSSC = loaderSSC.LoadFromSimfile( cache_file_path, *this, true );
 		if( !bLoadedFromSSC )
 		{
 			// load from .sm
 			SMLoader loaderSM;
-			loaderSM.LoadFromSimfile( sCacheFilePath, *this, true );
+			loaderSM.LoadFromSimfile( cache_file_path, *this, true );
 			loaderSM.TidyUpData( *this, true );
 		}
 		if(m_sMainTitle == "" || (m_sMusicFile == "" && m_vsKeysoundFile.empty()))
@@ -333,13 +356,12 @@ bool Song::LoadFromSongDir( RString sDir, bool load_autosave )
 		{
 			LOG->UserLog( "Song", sDir, "has no SSC, SM, SMA, DWI, BMS, or KSF files." );
 
-			vector<RString> vs;
-			GetDirListing( sDir + "*.mp3", vs, false, false );
-			GetDirListing( sDir + "*.oga", vs, false, false );
-			GetDirListing( sDir + "*.ogg", vs, false, false );
-			bool bHasMusic = !vs.empty();
+			vector<RString> audios;
+			FILEMAN->GetDirListingWithMultipleExtensions(sDir,
+				ActorUtil::GetTypeExtensionList(FT_Sound), audios);
+			bool has_music = !audios.empty();
 
-			if( !bHasMusic )
+			if(!has_music)
 			{
 				LOG->UserLog( "Song", sDir, "has no music file either. Ignoring this song directory." );
 				return false;
@@ -359,29 +381,65 @@ bool Song::LoadFromSongDir( RString sDir, bool load_autosave )
 
 		// Don't save a cache file if the autosave is being loaded, because the
 		// cache file would contain the autosave filename. -Kyz
-		if(!load_autosave)
+		// Songs loaded from removable profile are never cached, on the
+		// assumption that they'll change frequently and have invalid cache
+		// entries. -Kyz
+		if(!load_autosave && m_LoadedFromProfile == ProfileSlot_Invalid)
 		{
 			// save a cache file so we don't have to parse it all over again next time
 			if(!SaveToCacheFile())
-			{ sCacheFilePath = RString(); }
+			{ cache_file_path = RString(); }
 		}
 	}
 
-	FOREACH( Steps*, m_vpSteps, s )
+	if(m_LoadedFromProfile != ProfileSlot_Invalid)
 	{
-		/* Compress all Steps. During initial caching, this will remove cached
-		 * NoteData; during cached loads, this will just remove cached SMData. */
-		(*s)->Compress();
+		if(m_fMusicLengthSeconds > PREFSMAN->m_custom_songs_max_seconds)
+		{
+			LOG->Trace("Custom song %s is too long.", m_sSongDir.c_str());
+			return false;
+		}
+		RageFile music;
+		if(!music.Open(GetMusicPath(), RageFile::READ))
+		{
+			LOG->Trace("Custom song %s could not open music.", m_sSongDir.c_str());
+			return false;
+		}
+		if(music.GetFileSize() > PREFSMAN->m_custom_songs_max_megabytes * 1000000)
+		{
+			LOG->Trace("Custom song %s music file is too big.", m_sSongDir.c_str());
+			return false;
+		}
+		m_pre_customify_song_dir= m_sSongDir;
+		m_sSongDir= custom_songify_path(m_sSongDir);
+		m_sBannerFile.clear();
+		m_sJacketFile.clear();
+		m_sCDFile.clear();
+		m_sDiscFile.clear();
+		m_sLyricsFile.clear();
+		m_sBackgroundFile.clear();
+		m_sCDTitleFile.clear();
 	}
 
-	// Load the cached banners, if it's not loaded already.
-	if( PREFSMAN->m_BannerCache == BNCACHE_LOW_RES_PRELOAD && m_bHasBanner )
-		BANNERCACHE->LoadBanner( GetBannerPath() );
-	// Load the cached background, if it's not loaded already.
-	/*
-	if( PREFSMAN->m_BackgroundCache == BGCACHE_LOW_RES_PRELOAD && m_bHasBackground )
-		BACKGROUNDCACHE->LoadBackground( GetBackgroundPath() );
-	*/
+	for (Steps *s : m_vpSteps)
+	{
+		if(m_LoadedFromProfile != ProfileSlot_Invalid)
+		{
+			s->ChangeFilenamesForCustomSong();
+		}
+		/* Compress all Steps. During initial caching, this will remove cached
+		 * NoteData; during cached loads, this will just remove cached SMData. */
+		s->Compress();
+	}
+
+	// Load the cached Images, if it's not loaded already.
+	if( PREFSMAN->m_ImageCache == IMGCACHE_LOW_RES_PRELOAD )
+	{
+		for( RString Image : ImageDir )
+		{
+			IMAGECACHE->LoadImage( Image, GetCacheFile( Image ) );
+		}		
+	}
 
 	// Add AutoGen pointers. (These aren't cached.)
 	AddAutoGenNotes();
@@ -584,9 +642,9 @@ void Song::TidyUpData( bool from_cache, bool /* duringCache */ )
 
 	m_SongTiming.TidyUpData(false);
 
-	FOREACH(Steps *, m_vpSteps, s)
+	for (Steps *s : m_vpSteps)
 	{
-		(*s)->m_Timing.TidyUpData(true);
+		s->m_Timing.TidyUpData(true);
 	}
 
 	if(!from_cache)
@@ -625,12 +683,10 @@ void Song::TidyUpData( bool from_cache, bool /* duringCache */ )
 		m_bHasBanner = HasBanner();
 		m_bHasBackground = HasBackground();
 
-		if(m_bHasBanner)
-		{ BANNERCACHE->CacheBanner(GetBannerPath()); }
-		/*
-			if(m_bHasBackground)
-			{ BANNERCACHE->CacheBackground(GetBackgroundPath()); }
-		*/
+		for( RString Image : ImageDir )
+		{
+			IMAGECACHE->LoadImage( Image, GetCacheFile( Image ) );
+		}
 
 		// There are several things that need to find a file from the dir with a
 		// particular extension or type of extension.  So fetch a list of all
@@ -651,10 +707,15 @@ void Song::TidyUpData( bool from_cache, bool /* duringCache */ )
 		fill_exts.reserve(4);
 		lists_to_fill.push_back(&music_list);
 		fill_exts.push_back(&ActorUtil::GetTypeExtensionList(FT_Sound));
-		lists_to_fill.push_back(&image_list);
-		fill_exts.push_back(&ActorUtil::GetTypeExtensionList(FT_Bitmap));
-		lists_to_fill.push_back(&movie_list);
-		fill_exts.push_back(&ActorUtil::GetTypeExtensionList(FT_Movie));
+		// Disable bg and banner images and movies for custom songs.  Loading
+		// them takes too long. -Kyz
+		if(m_LoadedFromProfile == ProfileSlot_Invalid)
+		{
+			lists_to_fill.push_back(&image_list);
+			fill_exts.push_back(&ActorUtil::GetTypeExtensionList(FT_Bitmap));
+			lists_to_fill.push_back(&movie_list);
+			fill_exts.push_back(&ActorUtil::GetTypeExtensionList(FT_Movie));
+		}
 		lists_to_fill.push_back(&lyric_list);
 		fill_exts.push_back(&lyric_extensions);
 		for(vector<RString>::iterator filename= song_dir_listing.begin();
@@ -709,14 +770,14 @@ void Song::TidyUpData( bool from_cache, bool /* duringCache */ )
 			/* XXX: Checking if the music file exists eliminates a warning
 			 * originating from BMS files (which have no music file, per se)
 			 * but it's something of a hack. */
-			if(Sample == NULL && m_sMusicFile != "")
+			if(Sample == nullptr && m_sMusicFile != "")
 			{
 				LOG->UserLog("Sound file", GetMusicPath(), "couldn't be opened: %s", error.c_str());
 
 				// Don't use this file.
 				m_sMusicFile = "";
 			}
-			else if(Sample != NULL)
+			else if(Sample != nullptr)
 			{
 				m_fMusicLengthSeconds = Sample->GetLength() / 1000.0f;
 				delete Sample;
@@ -751,7 +812,7 @@ void Song::TidyUpData( bool from_cache, bool /* duringCache */ )
 		if(!m_PreviewFile.empty() && m_fMusicSampleLengthSeconds <= 0.00f) { // if there's a preview file and sample length isn't specified, set sample length to length of preview file
 			RString error;
 			RageSoundReader *Sample = RageSoundReader_FileReader::OpenFile(GetPreviewMusicPath(), error);
-			if(Sample == NULL && m_sMusicFile != "")
+			if(Sample == nullptr && m_sMusicFile != "")
 			{
 				LOG->UserLog("Sound file", GetPreviewMusicPath(), "couldn't be opened: %s", error.c_str());
 
@@ -759,7 +820,7 @@ void Song::TidyUpData( bool from_cache, bool /* duringCache */ )
 				m_PreviewFile = "";
 				m_fMusicSampleLengthSeconds = DEFAULT_MUSIC_SAMPLE_LENGTH;
 			}
-			else if(Sample != NULL)
+			else if(Sample != nullptr)
 			{
 				m_fMusicSampleLengthSeconds = Sample->GetLength() / 1000.0f;
 				delete Sample;
@@ -799,85 +860,6 @@ void Song::TidyUpData( bool from_cache, bool /* duringCache */ )
 
 		}
 
-		// Here's the problem:  We have a directory full of images. We want to
-		// determine which image is the banner, which is the background, and
-		// which is the CDTitle.
-
-		// For blank args to FindFirstFilenameContaining. -Kyz
-		vector<RString> empty_list;
-
-		bool has_jacket= HasJacket();
-		bool has_cdimage= HasCDImage();
-		bool has_disc= HasDisc();
-		bool has_cdtitle= HasCDTitle();
-
-		// First, check the file name for hints.
-		if(!m_bHasBanner)
-		{
-			/* If a nonexistant banner file is specified, and we can't find a
-			 * replacement, don't wipe out the old value. */
-			//m_sBannerFile = "";
-
-			// find an image with "banner" in the file name
-			vector<RString> contains(1, "banner");
-			/* Some people do things differently for the sake of being different.
-			 * Don't match eg. abnormal, numbness. */
-			vector<RString> ends_with(1, " bn");
-			m_bHasBanner= FindFirstFilenameContaining(image_list,
-				m_sBannerFile, empty_list, contains, ends_with);
-		}
-
-		if(!m_bHasBackground)
-		{
-			//m_sBackgroundFile = "";
-
-			// find an image with "bg" or "background" in the file name
-			vector<RString> contains(1, "background");
-			vector<RString> ends_with(1, "bg");
-			m_bHasBackground= FindFirstFilenameContaining(image_list,
-				m_sBackgroundFile, empty_list, contains, ends_with);
-		}
-
-		if(!has_jacket)
-		{
-			// find an image with "jacket" or "albumart" in the filename.
-			vector<RString> starts_with(1, "jk_");
-			vector<RString> contains;
-			contains.reserve(2);
-			contains.push_back("jacket");
-			contains.push_back("albumart");
-			has_jacket= FindFirstFilenameContaining(image_list,
-				m_sJacketFile, starts_with, contains, empty_list);
-		}
-
-		if(!has_cdimage)
-		{
-			// CD image, a la ddr 1st-3rd (not to be confused with CDTitles)
-			// find an image with "-cd" at the end of the filename.
-			vector<RString> ends_with(1, "-cd");
-			has_cdimage= FindFirstFilenameContaining(image_list,
-				m_sCDFile, empty_list, empty_list, ends_with);
-		}
-
-		if(!has_disc)
-		{
-			// a rectangular graphic, not to be confused with CDImage above.
-			vector<RString> ends_with;
-			ends_with.reserve(2);
-			ends_with.push_back(" disc");
-			ends_with.push_back(" title");
-			has_disc= FindFirstFilenameContaining(image_list,
-				m_sDiscFile, empty_list, empty_list, ends_with);
-		}
-
-		if(!has_cdtitle)
-		{
-			// find an image with "cdtitle" in the file name
-			vector<RString> contains(1, "cdtitle");
-			has_cdtitle= FindFirstFilenameContaining(image_list,
-				m_sCDTitleFile, empty_list, contains, empty_list);
-		}
-
 		if(!HasLyrics())
 		{
 			// Check if there is a lyric file in here
@@ -887,155 +869,238 @@ void Song::TidyUpData( bool from_cache, bool /* duringCache */ )
 			}
 		}
 
-		/* Now, For the images we still haven't found,
-		 * look at the image dimensions of the remaining unclassified images. */
-		for(unsigned int i= 0; i < image_list.size(); ++i) // foreach image
+		// Since banner, bg, and cdtitle are disabled for custom songs, don't try
+		// to find them. -Kyz
+		if(m_LoadedFromProfile == ProfileSlot_Invalid)
 		{
-			if(m_bHasBanner && m_bHasBackground && has_cdtitle)
+			// Here's the problem:  We have a directory full of images. We want to
+			// determine which image is the banner, which is the background, and
+			// which is the CDTitle.
+
+			// For blank args to FindFirstFilenameContaining. -Kyz
+			vector<RString> empty_list;
+
+			bool has_jacket= HasJacket();
+			bool has_cdimage= HasCDImage();
+			bool has_disc= HasDisc();
+			bool has_cdtitle= HasCDTitle();
+
+			// First, check the file name for hints.
+			if(!m_bHasBanner)
+			{
+				/* If a nonexistant banner file is specified, and we can't find a
+				 * replacement, don't wipe out the old value. */
+				//m_sBannerFile = "";
+
+				// find an image with "banner" in the file name
+				vector<RString> contains(1, "banner");
+				/* Some people do things differently for the sake of being different.
+				 * Don't match eg. abnormal, numbness. */
+				vector<RString> ends_with(1, " bn");
+				m_bHasBanner= FindFirstFilenameContaining(image_list,
+					m_sBannerFile, empty_list, contains, ends_with);
+			}
+
+			if(!m_bHasBackground)
+			{
+				//m_sBackgroundFile = "";
+
+				// find an image with "bg" or "background" in the file name
+				vector<RString> contains(1, "background");
+				vector<RString> ends_with(1, "bg");
+				m_bHasBackground= FindFirstFilenameContaining(image_list,
+					m_sBackgroundFile, empty_list, contains, ends_with);
+			}
+
+			if(!has_jacket)
+			{
+				// find an image with "jacket" or "albumart" in the filename.
+				vector<RString> starts_with(1, "jk_");
+				vector<RString> contains;
+				contains.reserve(2);
+				contains.push_back("jacket");
+				contains.push_back("albumart");
+				has_jacket= FindFirstFilenameContaining(image_list,
+					m_sJacketFile, starts_with, contains, empty_list);
+			}
+
+			if(!has_cdimage)
+			{
+				// CD image, a la ddr 1st-3rd (not to be confused with CDTitles)
+				// find an image with "-cd" at the end of the filename.
+				vector<RString> ends_with(1, "-cd");
+				has_cdimage= FindFirstFilenameContaining(image_list,
+					m_sCDFile, empty_list, empty_list, ends_with);
+			}
+
+			if(!has_disc)
+			{
+				// a rectangular graphic, not to be confused with CDImage above.
+				vector<RString> ends_with;
+				ends_with.reserve(2);
+				ends_with.push_back(" disc");
+				ends_with.push_back(" title");
+				has_disc= FindFirstFilenameContaining(image_list,
+					m_sDiscFile, empty_list, empty_list, ends_with);
+			}
+
+			if(!has_cdtitle)
+			{
+				// find an image with "cdtitle" in the file name
+				vector<RString> contains(1, "cdtitle");
+				has_cdtitle= FindFirstFilenameContaining(image_list,
+					m_sCDTitleFile, empty_list, contains, empty_list);
+			}
+
+			/* Now, For the images we still haven't found,
+			 * look at the image dimensions of the remaining unclassified images. */
+			for(unsigned int i= 0; i < image_list.size(); ++i) // foreach image
+			{
+				if(m_bHasBanner && m_bHasBackground && has_cdtitle)
 				break; // done
 
-			// ignore DWI "-char" graphics
-			RString lower = image_list[i];
-			lower.MakeLower();
-			if(BlacklistedImages.find(lower) != BlacklistedImages.end())
+				// ignore DWI "-char" graphics
+				RString lower = image_list[i];
+				lower.MakeLower();
+				if(BlacklistedImages.find(lower) != BlacklistedImages.end())
 				continue;	// skip
 
-			// Skip any image that we've already classified
+				// Skip any image that we've already classified
 
-			if(m_bHasBanner && m_sBannerFile.EqualsNoCase(image_list[i]))
+				if(m_bHasBanner && m_sBannerFile.EqualsNoCase(image_list[i]))
 				continue;	// skip
 
-			if(m_bHasBackground && m_sBackgroundFile.EqualsNoCase(image_list[i]))
+				if(m_bHasBackground && m_sBackgroundFile.EqualsNoCase(image_list[i]))
 				continue;	// skip
 
-			if(has_cdtitle && m_sCDTitleFile.EqualsNoCase(image_list[i]))
+				if(has_cdtitle && m_sCDTitleFile.EqualsNoCase(image_list[i]))
 				continue;	// skip
 
-			if(has_jacket && m_sJacketFile.EqualsNoCase(image_list[i]))
+				if(has_jacket && m_sJacketFile.EqualsNoCase(image_list[i]))
 				continue;	// skip
 
-			if(has_disc && m_sDiscFile.EqualsNoCase(image_list[i]))
+				if(has_disc && m_sDiscFile.EqualsNoCase(image_list[i]))
 				continue;	// skip
 
-			if(has_cdimage && m_sCDFile.EqualsNoCase(image_list[i]))
+				if(has_cdimage && m_sCDFile.EqualsNoCase(image_list[i]))
 				continue;	// skip
 
-			RString sPath = m_sSongDir + image_list[i];
+				RString sPath = m_sSongDir + image_list[i];
 
-			// We only care about the dimensions.
-			RString error;
-			RageSurface *img = RageSurfaceUtils::LoadFile(sPath, error, true);
-			if(!img)
-			{
-				LOG->UserLog("Graphic file", sPath, "couldn't be loaded: %s", error.c_str());
-				continue;
-			}
-
-			const int width = img->w;
-			const int height = img->h;
-			delete img;
-
-			if(!m_bHasBackground && width >= 320 && height >= 240)
-			{
-				m_sBackgroundFile = image_list[i];
-				m_bHasBackground= true;
-				continue;
-			}
-
-			if(!m_bHasBanner && 100 <= width && width <= 320 &&
-				50 <= height && height <= 240)
-			{
-				m_sBannerFile = image_list[i];
-				m_bHasBanner= true;
-				continue;
-			}
-
-			/* Some songs have overlarge banners. Check if the ratio is reasonable
-			 * (over 2:1; usually over 3:1), and large (not a cdtitle). */
-			if(!m_bHasBanner && width > 200 && float(width) / height > 2.0f)
-			{
-				m_sBannerFile = image_list[i];
-				m_bHasBanner= true;
-				continue;
-			}
-
-			/* Agh. DWI's inline title images are triggering this, resulting in
-			 * kanji, etc., being used as a CDTitle for songs with none. Some
-			 * sample data from random incarnations:
-			 *   42x50 35x50 50x50 144x49
-			 * It looks like ~50 height is what people use to align to DWI's font.
-			 *
-			 * My tallest CDTitle is 44. Let's cut off in the middle and hope for
-			 * the best. -(who? -aj) */
-			/* The proper size of a CDTitle is 64x48 or sometihng. Simfile artists
-			 * typically don't give a shit about this (see Cetaka's fucking banner
-			 * -sized CDTitle). This is also subverted in certain designs (beta
-			 * Mungyodance 3 simfiles, for instance, used the CDTitle to hold
-			 * various information about the song in question). As it stands,
-			 * I'm keeping this code until I figure out wtf to do -aj
-			 */
-			if(!has_cdtitle && width <= 100 && height <= 48)
-			{
-				m_sCDTitleFile = image_list[i];
-				has_cdtitle= true;
-				continue;
-			}
-
-			// Jacket files typically have the same width and height.
-			if(!has_jacket && width == height)
-			{
-				m_sJacketFile = image_list[i];
-				has_jacket= true;
-				continue;
-			}
-
-			// Disc images are typically rectangular; make sure we have a banner already.
-			if(!has_disc && (width > height) && m_bHasBanner)
-			{
-				if(image_list[i] != m_sBannerFile)
+				// We only care about the dimensions.
+				RString error;
+				RageSurface *img = RageSurfaceUtils::LoadFile(sPath, error, true);
+				if(!img)
 				{
-					m_sDiscFile = image_list[i];
-					has_disc= true;
+					LOG->UserLog("Graphic file", sPath, "couldn't be loaded: %s", error.c_str());
+					continue;
 				}
-				continue;
-			}
 
-			// CD images are the same as Jackets, typically the same width and height
-			if(!has_cdimage && width == height)
-			{
-				m_sCDFile = image_list[i];
-				has_cdimage= true;
-				continue;
+				const int width = img->w;
+				const int height = img->h;
+				delete img;
+
+				if(!m_bHasBackground && width >= 320 && height >= 240)
+				{
+					m_sBackgroundFile = image_list[i];
+					m_bHasBackground= true;
+					continue;
+				}
+
+				if(!m_bHasBanner && 100 <= width && width <= 320 &&
+					50 <= height && height <= 240)
+				{
+					m_sBannerFile = image_list[i];
+					m_bHasBanner= true;
+					continue;
+				}
+
+				/* Some songs have overlarge banners. Check if the ratio is reasonable
+				 * (over 2:1; usually over 3:1), and large (not a cdtitle). */
+				if(!m_bHasBanner && width > 200 && float(width) / height > 2.0f)
+				{
+					m_sBannerFile = image_list[i];
+					m_bHasBanner= true;
+					continue;
+				}
+
+				/* Agh. DWI's inline title images are triggering this, resulting in
+				 * kanji, etc., being used as a CDTitle for songs with none. Some
+				 * sample data from random incarnations:
+				 *   42x50 35x50 50x50 144x49
+				 * It looks like ~50 height is what people use to align to DWI's font.
+				 *
+				 * My tallest CDTitle is 44. Let's cut off in the middle and hope for
+				 * the best. -(who? -aj) */
+				/* The proper size of a CDTitle is 64x48 or sometihng. Simfile artists
+				 * typically don't give a shit about this (see Cetaka's fucking banner
+				 * -sized CDTitle). This is also subverted in certain designs (beta
+				 * Mungyodance 3 simfiles, for instance, used the CDTitle to hold
+				 * various information about the song in question). As it stands,
+				 * I'm keeping this code until I figure out wtf to do -aj
+				 */
+				if(!has_cdtitle && width <= 100 && height <= 48)
+				{
+					m_sCDTitleFile = image_list[i];
+					has_cdtitle= true;
+					continue;
+				}
+
+				// Jacket files typically have the same width and height.
+				if(!has_jacket && width == height)
+				{
+					m_sJacketFile = image_list[i];
+					has_jacket= true;
+					continue;
+				}
+
+				// Disc images are typically rectangular; make sure we have a banner already.
+				if(!has_disc && (width > height) && m_bHasBanner)
+				{
+					if(image_list[i] != m_sBannerFile)
+					{
+						m_sDiscFile = image_list[i];
+						has_disc= true;
+					}
+					continue;
+				}
+
+				// CD images are the same as Jackets, typically the same width and height
+				if(!has_cdimage && width == height)
+				{
+					m_sCDFile = image_list[i];
+					has_cdimage= true;
+					continue;
+				}
 			}
-		}
-		// If no BGChanges are specified and there are movies in the song
-		// directory, then assume they are DWI style where the movie begins at
-		// beat 0.
-		if(!HasBGChanges())
-		{
-			/* Use this->GetBeatFromElapsedTime(0) instead of 0 to start when the
-			 * music starts. */
-			if(movie_list.size() == 1)
+			// If no BGChanges are specified and there are movies in the song
+			// directory, then assume they are DWI style where the movie begins at
+			// beat 0.
+			if(!HasBGChanges())
 			{
-				this->AddBackgroundChange(BACKGROUND_LAYER_1,
-					BackgroundChange(0, movie_list[0], "", 1.f,
-						SBE_StretchNoLoop));
+				/* Use this->GetBeatFromElapsedTime(0) instead of 0 to start when the
+				 * music starts. */
+				if(movie_list.size() == 1)
+				{
+					this->AddBackgroundChange(BACKGROUND_LAYER_1,
+						BackgroundChange(0, movie_list[0], "", 1.f,
+							SBE_StretchNoLoop));
+				}
 			}
+			// Clear fields for files that turned out to not exist.
+#define CLEAR_NOT_HAS(has_name, field_name) if(!has_name) { field_name= ""; }
+			CLEAR_NOT_HAS(m_bHasBanner, m_sBannerFile);
+			CLEAR_NOT_HAS(m_bHasBackground, m_sBackgroundFile);
+			CLEAR_NOT_HAS(has_jacket, m_sJacketFile);
+			CLEAR_NOT_HAS(has_cdimage, m_sCDFile);
+			CLEAR_NOT_HAS(has_disc, m_sDiscFile);
+			CLEAR_NOT_HAS(has_cdtitle, m_sCDTitleFile);
+#undef CLEAR_NOT_HAS
 		}
 		// Don't allow multiple Steps of the same StepsType and Difficulty
 		// (except for edits). We should be able to use difficulty names as
 		// unique identifiers for steps. */
 		SongUtil::AdjustDuplicateSteps(this);
-
-		// Clear fields for files that turned out to not exist.
-#define CLEAR_NOT_HAS(has_name, field_name) if(!has_name) { field_name= ""; }
-		CLEAR_NOT_HAS(m_bHasBanner, m_sBannerFile);
-		CLEAR_NOT_HAS(m_bHasBackground, m_sBackgroundFile);
-		CLEAR_NOT_HAS(has_jacket, m_sJacketFile);
-		CLEAR_NOT_HAS(has_cdimage, m_sCDFile);
-		CLEAR_NOT_HAS(has_disc, m_sDiscFile);
-		CLEAR_NOT_HAS(has_cdtitle, m_sCDTitleFile);
-#undef CLEAR_NOT_HAS
 	}
 
 	/* Generate these before we autogen notes, so the new notes can inherit
@@ -1132,12 +1197,12 @@ bool Song::SongCompleteForStyle( const Style *st ) const
 
 bool Song::HasStepsType( StepsType st ) const
 {
-	return SongUtil::GetOneSteps( this, st ) != NULL;
+	return SongUtil::GetOneSteps( this, st ) != nullptr;
 }
 
 bool Song::HasStepsTypeAndDifficulty( StepsType st, Difficulty dc ) const
 {
-	return SongUtil::GetOneSteps( this, st, dc ) != NULL;
+	return SongUtil::GetOneSteps( this, st, dc ) != nullptr;
 }
 
 void Song::Save(bool autosave)
@@ -1197,9 +1262,8 @@ bool Song::SaveToSMFile()
 		FileCopy( sPath, sPath + ".old" );
 
 	vector<Steps*> vpStepsToSave;
-	FOREACH_CONST( Steps*, m_vpSteps, s )
+	for (Steps *pSteps : m_vpSteps)
 	{
-		Steps *pSteps = *s;
 		if( pSteps->IsAutogen() )
 			continue; // don't write autogen notes
 
@@ -1209,9 +1273,9 @@ bool Song::SaveToSMFile()
 
 		vpStepsToSave.push_back( pSteps );
 	}
-	FOREACH_CONST(Steps*, m_UnknownStyleSteps, s)
+	for (Steps *s : m_UnknownStyleSteps)
 	{
-		vpStepsToSave.push_back(*s);
+		vpStepsToSave.push_back(s);
 	}
 
 	return NotesWriterSM::Write( sPath, *this, vpStepsToSave );
@@ -1235,9 +1299,8 @@ bool Song::SaveToSSCFile( RString sPath, bool bSavingCache, bool autosave )
 		FileCopy( path, path + ".old" );
 
 	vector<Steps*> vpStepsToSave;
-	FOREACH_CONST( Steps*, m_vpSteps, s )
+	for (Steps *pSteps : m_vpSteps)
 	{
-		Steps *pSteps = *s;
 		if( pSteps->IsAutogen() )
 			continue; // don't write autogen notes
 
@@ -1249,9 +1312,9 @@ bool Song::SaveToSSCFile( RString sPath, bool bSavingCache, bool autosave )
 			pSteps->SetFilename(path);
 		vpStepsToSave.push_back( pSteps );
 	}
-	FOREACH_CONST(Steps*, m_UnknownStyleSteps, s)
+	for (Steps *s : m_UnknownStyleSteps)
 	{
-		vpStepsToSave.push_back(*s);
+		vpStepsToSave.push_back(s);
 	}
 
 	if(bSavingCache || autosave)
@@ -1286,8 +1349,8 @@ bool Song::SaveToSSCFile( RString sPath, bool bSavingCache, bool autosave )
 	}
 
 	// Mark these steps saved to disk.
-	FOREACH( Steps*, vpStepsToSave, s )
-		(*s)->SetSavedToDisk( true );
+	for (Steps *s : vpStepsToSave)
+		s->SetSavedToDisk( true );
 
 	return true;
 }
@@ -1459,11 +1522,11 @@ bool Song::IsEasy( StepsType st ) const
 bool Song::IsTutorial() const
 {
 	// A Song is considered a Tutorial if it has only Beginner steps.
-	FOREACH_CONST( Steps*, m_vpSteps, s )
+	for (Steps const *s : m_vpSteps)
 	{
-		if( (*s)->m_StepsType == StepsType_lights_cabinet )
+		if( s->m_StepsType == StepsType_lights_cabinet )
 			continue; // ignore
-		if( (*s)->GetDifficulty() != Difficulty_Beginner )
+		if( s->GetDifficulty() != Difficulty_Beginner )
 			return false;
 	}
 
@@ -1472,22 +1535,13 @@ bool Song::IsTutorial() const
 
 bool Song::HasEdits( StepsType st ) const
 {
-	for( unsigned i=0; i<m_vpSteps.size(); i++ )
-	{
-		Steps* pSteps = m_vpSteps[i];
-		if( pSteps->m_StepsType == st &&
-			pSteps->GetDifficulty() == Difficulty_Edit )
-		{
-			return true;
-		}
-	}
-
-	return false;
+	return std::any_of(m_vpSteps.begin(), m_vpSteps.end(),
+		[&](Steps const *step) { return step->m_StepsType == st && step->GetDifficulty() == Difficulty_Edit; });
 }
 
 bool Song::NormallyDisplayed() const
 {
-	return UNLOCKMAN == NULL || !UNLOCKMAN->SongIsLocked(this);
+	return UNLOCKMAN == nullptr || !UNLOCKMAN->SongIsLocked(this);
 }
 
 bool Song::ShowInDemonstrationAndRanking() const { return !IsTutorial() && NormallyDisplayed(); }
@@ -1570,9 +1624,9 @@ vector<BackgroundChange> &Song::GetForegroundChanges()
 vector<RString> Song::GetChangesToVectorString(const vector<BackgroundChange> & changes) const
 {
 	vector<RString> ret;
-	FOREACH_CONST( BackgroundChange, changes, bgc )
+	for (BackgroundChange const &bgc : changes)
 	{
-		ret.push_back((*bgc).ToString());
+		ret.push_back(bgc.ToString());
 	}
 	return ret;
 }
@@ -1590,6 +1644,99 @@ vector<RString> Song::GetBGChanges2ToVectorString() const
 vector<RString> Song::GetFGChanges1ToVectorString() const
 {
 	return this->GetChangesToVectorString(this->GetForegroundChanges());
+}
+
+// We want to return a filename, We use this function for that.
+RString Song::GetCacheFile(RString sType)
+{
+	// We put the Predefined images into a map.
+	map< RString, RString > PreDefs;
+	PreDefs["Banner"] = GetBannerPath();
+	PreDefs["Background"] = GetBackgroundPath();
+	PreDefs["CDTitle"] = GetCDTitlePath();
+	PreDefs["Jacket"] = GetJacketPath();
+	PreDefs["CDImage"] = GetCDImagePath();
+	PreDefs["Disc"] = GetDiscPath();
+	
+	// Check if Predefined images exist, And return function if they do.
+	if(PreDefs[sType.c_str()])
+		return PreDefs[sType.c_str()];	
+	
+	// Get all image files and put them into a vector.
+	vector<RString> song_dir_listing;
+	FILEMAN->GetDirListing(m_sSongDir + "*", song_dir_listing, false, false);
+	vector<RString> image_list;
+	vector<RString> fill_exts = ActorUtil::GetTypeExtensionList(FT_Bitmap);
+	for( RString Image : song_dir_listing )
+	{
+		RString FileExt = GetExtension(Image);	
+		transform(FileExt.begin(), FileExt.end(), FileExt.begin(),::tolower);
+		for ( RString FindExt : fill_exts )
+		{
+			if(FileExt == FindExt)
+				image_list.push_back(Image);
+		}
+	}
+	
+	// Create a map that contains all the filenames to search for.
+	map<RString, map< int, RString > > PreSets;
+	PreSets["Banner"][1] = "bn";
+	PreSets["Banner"][2] = "banner";
+	PreSets["Background"][1] = "bg";
+	PreSets["Background"][2] = "background";
+	PreSets["CDTitle"][1] = "cdtitle";
+	PreSets["Jacket"][1] = "jk_";	
+	PreSets["Jacket"][2] = "jacket";
+	PreSets["Jacket"][3] = "albumart";
+	PreSets["CDImage"][1] = "-cd";
+	PreSets["Disc"][1] = " disc";
+	PreSets["Disc"][2] = " title";	
+	
+	for( RString Image : image_list)
+	{
+		// We want to make it lower case.
+		transform(Image.begin(), Image.end(), Image.begin(),::tolower);
+		for( pair< const int, RString> PreSet : PreSets[sType.c_str()] )
+		{
+			// Search for image using PreSets.
+			size_t Found = Image.find(PreSet.second.c_str());
+			if(Found!=RString::npos)
+				return GetSongAssetPath( Image, m_sSongDir );
+		}
+		// Search for the image directly if it doesnt exist in PreSets, 
+		// Or incase we define our own stuff.
+		size_t Found = Image.find(sType.c_str());
+		if(Found!=RString::npos)
+			return GetSongAssetPath( Image, m_sSongDir );
+	}
+	// Return empty if nothing found.
+	return "";
+}
+
+RString Song::GetFileHash()
+{
+	if (m_sFileHash.empty()) {
+		RString sPath = SetExtension(GetSongFilePath(), "sm");
+		if (!IsAFile(sPath))
+			sPath = SetExtension(GetSongFilePath(), "dwi");
+		if (!IsAFile(sPath))
+			sPath = SetExtension(GetSongFilePath(), "sma");
+		if (!IsAFile(sPath))
+			sPath = SetExtension(GetSongFilePath(), "bms");
+		if (!IsAFile(sPath))
+			sPath = SetExtension(GetSongFilePath(), "ksf");
+		if (!IsAFile(sPath))
+			sPath = SetExtension(GetSongFilePath(), "json");
+		if (!IsAFile(sPath))
+			sPath = SetExtension(GetSongFilePath(), "jso");
+		if (!IsAFile(sPath))
+			sPath = SetExtension(GetSongFilePath(), "ssc");
+		if (IsAFile(sPath))
+			m_sFileHash = BinaryToHex(CRYPTMAN->GetSHA1ForFile(sPath));
+		else
+			m_sFileHash = "";
+	}
+	return m_sFileHash;
 }
 
 vector<RString> Song::GetInstrumentTracksToVectorString() const
@@ -1836,7 +1983,7 @@ void Song::FreeAllLoadedFromProfile( ProfileSlot slot, const set<Steps*> *setInU
 			continue;
 		if( slot != ProfileSlot_Invalid && pSteps->GetLoadedFromProfileSlot() != slot )
 			continue;
-		if( setInUse != NULL && setInUse->find(pSteps) != setInUse->end() )
+		if( setInUse != nullptr && setInUse->find(pSteps) != setInUse->end() )
 			continue;
 		apToRemove.push_back( pSteps );
 	}
@@ -1896,9 +2043,9 @@ bool Song::IsStepsUsingDifferentTiming(Steps *pSteps) const
 
 bool Song::AnyChartUsesSplitTiming() const
 {
-	FOREACH_CONST(Steps*, m_vpSteps, s)
+	for (Steps *s : m_vpSteps)
 	{
-		if(!(*s)->m_Timing.empty())
+		if(!s->m_Timing.empty())
 		{
 			return true;
 		}
@@ -2110,6 +2257,11 @@ public:
 	static int IsEnabled( T* p, lua_State *L )
 	{
 		lua_pushboolean(L, p->GetEnabled());
+		return 1;
+	}
+	static int IsCustomSong(T* p, lua_State* L)
+	{
+		lua_pushboolean(L, p->m_LoadedFromProfile != ProfileSlot_Invalid);
 		return 1;
 	}
 	static int GetGroupName( T* p, lua_State *L )
@@ -2334,6 +2486,7 @@ public:
 		ADD_METHOD( GetSongFilePath );
 		ADD_METHOD( IsTutorial );
 		ADD_METHOD( IsEnabled );
+		ADD_METHOD(IsCustomSong);
 		ADD_METHOD( GetGroupName );
 		ADD_METHOD( MusicLengthSeconds );
 		ADD_METHOD( GetSampleStart );

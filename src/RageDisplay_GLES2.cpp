@@ -11,7 +11,7 @@
 #include "RageSurface.h"
 #include "RageTextureManager.h"
 
-#include "DisplayResolutions.h"
+#include "DisplaySpec.h"
 
 #include "arch/LowLevelWindow/LowLevelWindow.h"
 
@@ -220,7 +220,7 @@ RageDisplay_GLES2::RageDisplay_GLES2()
 	FixLittleEndian();
 //	RageDisplay_GLES2_Helpers::Init();
 
-	g_pWind = NULL;
+	g_pWind = nullptr;
 }
 
 RString
@@ -444,10 +444,10 @@ RageDisplay_GLES2::~RageDisplay_GLES2()
 }
 
 void
-RageDisplay_GLES2::GetDisplayResolutions( DisplayResolutions &out ) const
+RageDisplay_GLES2::GetDisplaySpecs(DisplaySpecs &out) const
 {
 	out.clear();
-	g_pWind->GetDisplayResolutions( out );
+	g_pWind->GetDisplaySpecs(out);
 }
 
 RageSurface*
@@ -517,7 +517,7 @@ RageDisplay_GLES2::GetApiDescription() const
 	return "OpenGL ES 2.0";
 }
 
-VideoModeParams
+ActualVideoModeParams
 RageDisplay_GLES2::GetActualVideoModeParams() const
 {
 	return g_pWind->GetActualVideoModeParams();
@@ -559,7 +559,7 @@ RageDisplay_GLES2::SupportsPerVertexMatrixScale()
 	return true;
 }
 
-unsigned
+uintptr_t
 RageDisplay_GLES2::CreateTexture(
 	RagePixelFormat pixfmt,
 	RageSurface* img,
@@ -572,7 +572,7 @@ RageDisplay_GLES2::CreateTexture(
 
 void
 RageDisplay_GLES2::UpdateTexture( 
-	unsigned iTexHandle, 
+	uintptr_t iTexHandle, 
 	RageSurface* img,
 	int xoffset, int yoffset, int width, int height 
 	)
@@ -581,7 +581,7 @@ RageDisplay_GLES2::UpdateTexture(
 }
 
 void
-RageDisplay_GLES2::DeleteTexture( unsigned iTexHandle )
+RageDisplay_GLES2::DeleteTexture( uintptr_t iTexHandle )
 {
 	// TODO
 }
@@ -613,7 +613,7 @@ SetTextureUnit( TextureUnit tu )
 }
 
 void
-RageDisplay_GLES2::SetTexture( TextureUnit tu, unsigned iTexture )
+RageDisplay_GLES2::SetTexture( TextureUnit tu, uintptr_t iTexture )
 {
 	if (!SetTextureUnit( tu ))
 		return;
@@ -621,7 +621,7 @@ RageDisplay_GLES2::SetTexture( TextureUnit tu, unsigned iTexture )
 	if (iTexture)
 	{
 		glEnable( GL_TEXTURE_2D );
-		glBindTexture( GL_TEXTURE_2D, iTexture );
+		glBindTexture( GL_TEXTURE_2D, static_cast<GLuint>(iTexture) );
 	}
 	else
 	{
@@ -735,7 +735,7 @@ void RageDisplay_Legacy::SetBlendMode( BlendMode mode )
 {
 	glEnable(GL_BLEND);
 
-	if (glBlendEquation != NULL)
+	if (glBlendEquation != nullptr)
 	{
 		if (mode == BLEND_INVERT_DEST)
 			glBlendEquation( GL_FUNC_SUBTRACT );

@@ -1,6 +1,5 @@
 #include "global.h"
 #include "PrefsManager.h"
-#include "Foreach.h"
 #include "IniFile.h"
 #include "LuaManager.h"
 #include "Preference.h"
@@ -20,7 +19,7 @@
 //STATIC_INI_PATH	= "Data/Static.ini";		// overlay on the 2 above, can't be overridden
 //TYPE_TXT_FILE	= "Data/Type.txt";
 
-PrefsManager*	PREFSMAN = NULL;	// global and accessible from anywhere in our program
+PrefsManager*	PREFSMAN = nullptr;	// global and accessible from anywhere in our program
 
 static const char *MusicWheelUsesSectionsNames[] = {
 	"Never",
@@ -77,26 +76,16 @@ XToString( ShowDancingCharacters );
 StringToX( ShowDancingCharacters );
 LuaXType( ShowDancingCharacters );
 
-static const char *BannerCacheModeNames[] = {
+static const char *ImageCacheModeNames[] = {
 	"Off",
 	"LowResPreload",
 	"LowResLoadOnDemand",
 	"Full"
 };
-XToString( BannerCacheMode );
-StringToX( BannerCacheMode );
-LuaXType( BannerCacheMode );
-/*
-static const char *BackgroundCacheModeNames[] = {
-	"Off",
-	"LowResPreload",
-	"LowResLoadOnDemand",
-	"Full"
-};
-XToString( BackgroundCacheMode );
-StringToX( BackgroundCacheMode );
-LuaXType( BackgroundCacheMode );
-*/
+XToString( ImageCacheMode );
+StringToX( ImageCacheMode );
+LuaXType( ImageCacheMode );
+
 static const char *HighResolutionTexturesNames[] = {
 	"Auto",
 	"ForceOff",
@@ -167,6 +156,7 @@ PrefsManager::PrefsManager() :
 	m_sDefaultModifiers		( "DefaultModifiers",		"" ),
 
 	m_bWindowed			( "Windowed",			true ),
+	m_sDisplayId			( "DisplayId", "" ),
 	m_iDisplayWidth			( "DisplayWidth",		854 ),
 	m_iDisplayHeight		( "DisplayHeight",		480 ),
 	m_fDisplayAspectRatio		( "DisplayAspectRatio",		16/9.f, ValidateDisplayAspectRatio ),
@@ -179,9 +169,10 @@ PrefsManager::PrefsManager() :
 	m_iMaxTextureResolution		( "MaxTextureResolution",	2048 ),
 	m_iRefreshRate			( "RefreshRate",		REFRESH_DEFAULT ),
 	m_bAllowMultitexture		( "AllowMultitexture",		true ),
+	m_bFullscreenIsBorderlessWindow( "FullscreenIsBorderlessWindow", true ),
 	m_bShowStats			( "ShowStats",			TRUE_IF_DEBUG),
 	m_bShowBanners			( "ShowBanners",		true ),
-	m_bShowMouseCursor		( "ShowMouseCursor",		true ),
+	m_bShowMouseCursor		( "ShowMouseCursor",		false ),
 
 	m_bHiddenSongs			( "HiddenSongs",		false ),
 	m_bVsync			( "Vsync",			true ),
@@ -190,8 +181,7 @@ PrefsManager::PrefsManager() :
 	m_bPAL				( "PAL",			false ),
 	m_bDelayedTextureDelete		( "DelayedTextureDelete",	false ),
 	m_bDelayedModelDelete		( "DelayedModelDelete",		false ),
-	m_BannerCache			( "BannerCache",		BNCACHE_LOW_RES_PRELOAD ),
-	//m_BackgroundCache		( "BackgroundCache",		BGCACHE_LOW_RES_PRELOAD ),
+	m_ImageCache			( "ImageCache",		IMGCACHE_LOW_RES_PRELOAD ),
 	m_bFastLoad			( "FastLoad",			true ),
 	m_bFastLoadAdditionalSongs      ( "FastLoadAdditionalSongs",    true ),
 	m_NeverCacheList		( "NeverCacheList", ""),
@@ -229,7 +219,6 @@ PrefsManager::PrefsManager() :
 	m_AllowMultipleToasties		("AllowMultipleToasties",	true ),
 	m_MinTNSToHideNotes		("MinTNSToHideNotes",		TNS_W3 ),
 	m_ShowSongOptions		( "ShowSongOptions",		Maybe_NO ),
-	m_bDancePointsForOni		( "DancePointsForOni",		true ),
 	m_bPercentageScoring		( "PercentageScoring",		false ),
 	// Wow, these preference names are *seriously* long -Colby
 	m_fMinPercentageForMachineSongHighScore		( "MinPercentageForMachineSongHighScore",	0.0001f ), // This is for home, who cares how bad you do?
@@ -242,7 +231,7 @@ PrefsManager::PrefsManager() :
 	m_bLockCourseDifficulties	( "LockCourseDifficulties",		true ),
 	m_ShowDancingCharacters		( "ShowDancingCharacters",		SDC_Random ),
 	m_bUseUnlockSystem		( "UseUnlockSystem",			false ),
-	m_fGlobalOffsetSeconds		( "GlobalOffsetSeconds",		0 ),
+	m_fGlobalOffsetSeconds		( "GlobalOffsetSeconds",		-0.008f ),
 	m_iProgressiveLifebar		( "ProgressiveLifebar",			0 ),
 	m_iProgressiveStageLifebar	( "ProgressiveStageLifebar",		0 ),
 	m_iProgressiveNonstopLifebar	( "ProgressiveNonstopLifebar",		0 ),
@@ -256,7 +245,7 @@ PrefsManager::PrefsManager() :
 	m_fCenterImageAddWidth		( "CenterImageAddWidth",		0 ),
 	m_fCenterImageAddHeight		( "CenterImageAddHeight",		0 ),
 	m_AttractSoundFrequency		( "AttractSoundFrequency",		ASF_EVERY_TIME ),
-	m_bAllowExtraStage		( "AllowExtraStage",			true ),
+	m_bAllowExtraStage		( "AllowExtraStage",			false ),
 	m_iMaxHighScoresPerListForMachine	( "MaxHighScoresPerListForMachine",	10 ),
 	m_iMaxHighScoresPerListForPlayer	( "MaxHighScoresPerListForPlayer",	3 ),
 	m_bAllowMultipleHighScoreWithSameName	( "AllowMultipleHighScoreWithSameName",	true ),
@@ -285,6 +274,7 @@ PrefsManager::PrefsManager() :
 	m_bSmoothLines			( "SmoothLines",			false ),
 	m_iSoundWriteAhead		( "SoundWriteAhead",			0 ),
 	m_iSoundDevice			( "SoundDevice",			"" ),
+	m_iRageSoundSampleCountClamp	("RageSoundSampleCountClamp", 0), //some sound drivers mask the sample location number, the most popular number for this is 2^27, this causes lockup after ~50 minutes at 44.1khz sample rate
 	m_iSoundPreferredSampleRate	( "SoundPreferredSampleRate",		0 ),
 	m_sLightsStepsDifficulty	( "LightsStepsDifficulty",		"medium" ),
 	m_bAllowUnacceleratedRenderer	( "AllowUnacceleratedRenderer",		false ), 
@@ -299,6 +289,12 @@ PrefsManager::PrefsManager() :
 	m_bAllowSongDeletion		( "AllowSongDeletion",			false ),
 
 	m_bQuirksMode			( "QuirksMode",		false ),
+
+	m_custom_songs_enable("CustomSongsEnable", false),
+	m_custom_songs_max_count("CustomSongsMaxCount", 1000), // No limit. -- 2 Unlimited
+	m_custom_songs_load_timeout("CustomSongsLoadTimeout", 5.f),
+	m_custom_songs_max_seconds("CustomSongsMaxSeconds", 120.f),
+	m_custom_songs_max_megabytes("CustomSongsMaxMegabytes", 5.f),
 
 	/* Debug: */
 	m_bLogToDisk			( "LogToDisk",		true ),
@@ -375,7 +371,7 @@ void PrefsManager::StoreGamePrefs()
 	ASSERT( !m_sCurrentGame.Get().empty() );
 
 	// save off old values
-	GamePrefs &gp = m_mapGameNameToGamePrefs[m_sCurrentGame];
+	GamePrefs &gp = m_mapGameNameToGamePrefs[m_sCurrentGame.Get()];
 	gp.m_sAnnouncer = m_sAnnouncer;
 	gp.m_sTheme = m_sTheme;
 	gp.m_sDefaultModifiers = m_sDefaultModifiers;
@@ -450,7 +446,7 @@ void PrefsManager::ReadPrefsFromIni( const IniFile &ini, const RString &sSection
 
 	/*
 	IPreference *pPref = PREFSMAN->GetPreferenceByName( *sName );
-	if( pPref == NULL )
+	if( pPref == nullptr )
 	{
 		LOG->Warn( "Unknown preference in [%s]: %s", sClassName.c_str(), sName->c_str() );
 		continue;
@@ -518,18 +514,18 @@ void PrefsManager::SavePrefsToIni( IniFile &ini )
 		StoreGamePrefs();
 
 	XNode* pNode = ini.GetChild( "Options" );
-	if( pNode == NULL )
+	if( pNode == nullptr )
 		pNode = ini.AppendChild( "Options" );
 	IPreference::SavePrefsToNode( pNode );
 
-	FOREACHM_CONST( RString, GamePrefs, m_mapGameNameToGamePrefs, iter )
+	for (auto const &iter : m_mapGameNameToGamePrefs)
 	{
-		RString sSection = "Game-" + RString( iter->first );
+		RString sSection = "Game-" + RString( iter.first );
 
 		// todo: write more values here? -aj
-		ini.SetValue( sSection, "Announcer",		iter->second.m_sAnnouncer );
-		ini.SetValue( sSection, "Theme",		iter->second.m_sTheme );
-		ini.SetValue( sSection, "DefaultModifiers",	iter->second.m_sDefaultModifiers );
+		ini.SetValue( sSection, "Announcer",		iter.second.m_sAnnouncer );
+		ini.SetValue( sSection, "Theme",		iter.second.m_sTheme );
+		ini.SetValue( sSection, "DefaultModifiers",	iter.second.m_sDefaultModifiers );
 	}
 }
 
@@ -559,7 +555,7 @@ public:
 	{
 		RString sName = SArg(1);
 		IPreference *pPref = IPreference::GetPreferenceByName( sName );
-		if( pPref == NULL )
+		if( pPref == nullptr )
 		{
 			LuaHelpers::ReportScriptErrorFmt( "GetPreference: unknown preference \"%s\"", sName.c_str() );
 			lua_pushnil( L );
@@ -574,7 +570,7 @@ public:
 		RString sName = SArg(1);
 
 		IPreference *pPref = IPreference::GetPreferenceByName( sName );
-		if( pPref == NULL )
+		if( pPref == nullptr )
 		{
 			LuaHelpers::ReportScriptErrorFmt( "SetPreference: unknown preference \"%s\"", sName.c_str() );
 			COMMON_RETURN_SELF;
@@ -589,7 +585,7 @@ public:
 		RString sName = SArg(1);
 
 		IPreference *pPref = IPreference::GetPreferenceByName( sName );
-		if( pPref == NULL )
+		if( pPref == nullptr )
 		{
 			LuaHelpers::ReportScriptErrorFmt( "SetPreferenceToDefault: unknown preference \"%s\"", sName.c_str() );
 			COMMON_RETURN_SELF;
@@ -604,7 +600,7 @@ public:
 		RString sName = SArg(1);
 
 		IPreference *pPref = IPreference::GetPreferenceByName( sName );
-		if( pPref == NULL )
+		if( pPref == nullptr )
 		{
 			lua_pushboolean( L, false );
 			return 1;

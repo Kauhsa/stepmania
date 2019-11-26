@@ -188,6 +188,7 @@ BuildLog.htm
 *.swp
 *.pc
 *.d
+.vscode/
 *.cbp
 
 # JetBrains

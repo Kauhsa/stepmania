@@ -4,7 +4,6 @@
 #include "RageLog.h"
 #include "RageFile.h"
 #include "RageSoundReader_FileReader.h"
-#include "Foreach.h"
 #include "LocalizedString.h"
 #include "LuaBinding.h"
 #include "LuaManager.h"
@@ -17,6 +16,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <math.h>
+
+const RString CUSTOM_SONG_PATH= "/@mem/";
 
 bool HexToBinary(const RString&, RString&);
 void utf8_sanitize(RString &);
@@ -32,7 +33,7 @@ MersenneTwister::MersenneTwister( int iSeed ) : m_iNext(0)
 void MersenneTwister::Reset( int iSeed )
 {
 	if( iSeed == 0 )
-		iSeed = time(NULL);
+		iSeed = time(nullptr);
 
 	m_Values[0] = iSeed;
 	m_iNext = 0;
@@ -150,7 +151,7 @@ namespace
 	{
 		LIST_METHOD( Seed ),
 		LIST_METHOD( Random ),
-		{ NULL, NULL }
+		{ nullptr, nullptr }
 	};
 }
 
@@ -275,8 +276,8 @@ float HHMMSSToSeconds( const RString &sHHMMSS )
 		arrayBits.insert(arrayBits.begin(), "0" );	// pad missing bits
 
 	float fSeconds = 0;
-	fSeconds += StringToInt( arrayBits[0] ) * 60 * 60;
-	fSeconds += StringToInt( arrayBits[1] ) * 60;
+	fSeconds += std::stoi( arrayBits[0] ) * 60 * 60;
+	fSeconds += std::stoi( arrayBits[1] ) * 60;
 	fSeconds += StringToFloat( arrayBits[2] );
 
 	return fSeconds;
@@ -411,7 +412,7 @@ RString FormatNumberAndSuffix( int i )
 
 struct tm GetLocalTime()
 {
-	const time_t t = time(NULL);
+	const time_t t = time(nullptr);
 	struct tm tm;
 	localtime_r( &t, &tm );
 	return tm;
@@ -431,7 +432,7 @@ RString vssprintf( const char *szFormat, va_list argList )
 	RString sStr;
 
 #if defined(WIN32)
-	char *pBuf = NULL;
+	char *pBuf = nullptr;
 	int iChars = 1;
 	int iUsed = 0;
 	int iTry = 0;
@@ -705,7 +706,7 @@ const LanguageInfo *GetLanguageInfo( const RString &sIsoCode )
 			return &g_langs[i];
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 RString join( const RString &sDeliminator, const vector<RString> &sSource)
@@ -979,6 +980,17 @@ void splitpath( const RString &sPath, RString &sDir, RString &sFilename, RString
 	}
 }
 
+RString custom_songify_path(RString const& path)
+{
+	vector<RString> parts;
+	split(path, "/", parts, false);
+	if(parts.size() < 2)
+	{
+		return CUSTOM_SONG_PATH + path;
+	}
+	return CUSTOM_SONG_PATH + parts[parts.size()-2] + "/" + parts[parts.size()-1];
+}
+
 /* "foo.bar", "baz" -> "foo.baz"
  * "foo", "baz" -> "foo.baz"
  * "foo.bar", "" -> "foo" */
@@ -1079,7 +1091,7 @@ bool FindFirstFilenameContaining(const vector<RString>& filenames,
 }
 
 int g_argc = 0;
-char **g_argv = NULL;
+char **g_argv = nullptr;
 
 void SetCommandlineArguments( int argc, char **argv )
 {
@@ -1097,7 +1109,7 @@ void GetCommandLineArguments( int &argc, char **&argv )
  * option "--test".  All commandline arguments are getopt_long style: --foo;
  * short arguments (-x) are not supported.  (These are not intended for
  * common, general use, so having short options isn't currently needed.)
- * If argument is non-NULL, accept an argument. */
+ * If argument is non-nullptr, accept an argument. */
 bool GetCommandlineArgument( const RString &option, RString *argument, int iIndex )
 {
 	const RString optstr = "--" + option;
@@ -1135,7 +1147,7 @@ bool GetCommandlineArgument( const RString &option, RString *argument, int iInde
 RString GetCwd()
 {
 	char buf[PATH_MAX];
-	bool ret = getcwd(buf, PATH_MAX) != NULL;
+	bool ret = getcwd(buf, PATH_MAX) != nullptr;
 	ASSERT(ret);
 	return buf;
 }
@@ -1459,12 +1471,12 @@ void Regex::Compile()
 {
 	const char *error;
 	int offset;
-	m_pReg = pcre_compile( m_sPattern.c_str(), PCRE_CASELESS, &error, &offset, NULL );
+	m_pReg = pcre_compile( m_sPattern.c_str(), PCRE_CASELESS, &error, &offset, nullptr );
 
-	if( m_pReg == NULL )
+	if( m_pReg == nullptr )
 		RageException::Throw( "Invalid regex: \"%s\" (%s).", m_sPattern.c_str(), error );
 
-	int iRet = pcre_fullinfo( (pcre *) m_pReg, NULL, PCRE_INFO_CAPTURECOUNT, &m_iBackrefs );
+	int iRet = pcre_fullinfo( (pcre *) m_pReg, nullptr, PCRE_INFO_CAPTURECOUNT, &m_iBackrefs );
 	ASSERT( iRet >= 0 );
 
 	++m_iBackrefs;
@@ -1481,16 +1493,16 @@ void Regex::Set( const RString &sStr )
 void Regex::Release()
 {
 	pcre_free( m_pReg );
-	m_pReg = NULL;
+	m_pReg = nullptr;
 	m_sPattern = RString();
 }
 
-Regex::Regex( const RString &sStr ): m_pReg(NULL), m_iBackrefs(0), m_sPattern(RString())
+Regex::Regex( const RString &sStr ): m_pReg(nullptr), m_iBackrefs(0), m_sPattern(RString())
 {
 	Set( sStr );
 }
 
-Regex::Regex( const Regex &rhs ): m_pReg(NULL), m_iBackrefs(0), m_sPattern(RString())
+Regex::Regex( const Regex &rhs ): m_pReg(nullptr), m_iBackrefs(0), m_sPattern(RString())
 {
 	Set( rhs.m_sPattern );
 }
@@ -1510,7 +1522,7 @@ Regex::~Regex()
 bool Regex::Compare( const RString &sStr )
 {
 	int iMat[128*3];
-	int iRet = pcre_exec( (pcre *) m_pReg, NULL, sStr.data(), sStr.size(), 0, 0, iMat, 128*3 );
+	int iRet = pcre_exec( (pcre *) m_pReg, nullptr, sStr.data(), sStr.size(), 0, 0, iMat, 128*3 );
 
 	if( iRet < -1 )
 		RageException::Throw( "Unexpected return from pcre_exec('%s'): %i.", m_sPattern.c_str(), iRet );
@@ -1523,7 +1535,7 @@ bool Regex::Compare( const RString &sStr, vector<RString> &asMatches )
 	asMatches.clear();
 
 	int iMat[128*3];
-	int iRet = pcre_exec( (pcre *) m_pReg, NULL, sStr.data(), sStr.size(), 0, 0, iMat, 128*3 );
+	int iRet = pcre_exec( (pcre *) m_pReg, nullptr, sStr.data(), sStr.size(), 0, 0, iMat, 128*3 );
 
 	if( iRet < -1 )
 		RageException::Throw( "Unexpected return from pcre_exec('%s'): %i.", m_sPattern.c_str(), iRet );
@@ -1863,35 +1875,29 @@ void MakeLower( wchar_t *p, size_t iLen )
 	UnicodeUpperLower( p, iLen, g_LowerCase );
 }
 
-int StringToInt( const RString &sString )
-{
-	int ret;
-	istringstream ( sString ) >> ret;
-	return ret;
-}
-
-RString IntToString( const int &iNum )
-{
-	stringstream ss;
-	ss << iNum;
-	return ss.str();
-}
-
 float StringToFloat( const RString &sString )
 {
-	float ret = strtof( sString, NULL );
-
-	if( !isfinite(ret) )
-		ret = 0.0f;
-	return ret;
+	RString toTrim = sString;
+	Trim(toTrim);
+	if (toTrim.size() == 0)
+	{
+		return 0;
+	}
+	return std::stof(toTrim);
 }
 
 bool StringToFloat( const RString &sString, float &fOut )
 {
+	RString toTrim = sString;
+	Trim(toTrim);
+	if (toTrim.size() == 0)
+	{
+		return false;
+	}
 	char *endPtr;
 
-	fOut = strtof( sString, &endPtr );
-	return sString.size() && *endPtr == '\0' && isfinite( fOut );
+	fOut = strtof( toTrim, &endPtr );
+	return *endPtr == '\0' && isfinite( fOut );
 }
 
 RString FloatToString( const float &num )
@@ -2002,8 +2008,8 @@ void ReplaceEntityText( RString &sText, const map<char,RString> &m )
 {
 	RString sFind;
 
-	FOREACHM_CONST( char, RString, m, c )
-		sFind.append( 1, c->first );
+	for (std::pair<char, RString> const &c : m)
+		sFind.append( 1, c.first );
 
 	RString sRet;
 
@@ -2325,7 +2331,7 @@ namespace StringConversion
 		if( sValue.size() == 0 )
 			return false;
 
-		out = (StringToInt(sValue) != 0);
+		out = (std::stoi(sValue) != 0);
 		return true;
 	}
 
@@ -2385,7 +2391,7 @@ bool FileCopy( RageFileBasic &in, RageFileBasic &out, RString &sError, bool *bRe
 		if( in.Read(data, 1024*32) == -1 )
 		{
 			sError = ssprintf( "read error: %s", in.GetError().c_str() );
-			if( bReadError != NULL )
+			if( bReadError != nullptr )
 			{
 				*bReadError = true;
 			}
@@ -2399,7 +2405,7 @@ bool FileCopy( RageFileBasic &in, RageFileBasic &out, RString &sError, bool *bRe
 		if( i == -1 )
 		{
 			sError = ssprintf( "write error: %s", out.GetError().c_str() );
-			if( bReadError != NULL )
+			if( bReadError != nullptr )
 			{
 				*bReadError = false;
 			}
@@ -2410,7 +2416,7 @@ bool FileCopy( RageFileBasic &in, RageFileBasic &out, RString &sError, bool *bRe
 	if( out.Flush() == -1 )
 	{
 		sError = ssprintf( "write error: %s", out.GetError().c_str() );
-		if( bReadError != NULL )
+		if( bReadError != nullptr )
 		{
 			*bReadError = false;
 		}
@@ -2543,7 +2549,7 @@ int LuaFunc_get_music_file_length(lua_State* L)
 	RString path= SArg(1);
 	RString error;
 	RageSoundReader* sample= RageSoundReader_FileReader::OpenFile(path, error);
-	if(sample == NULL)
+	if(sample == nullptr)
 	{
 		luaL_error(L, "The music file '%s' does not exist.", path.c_str());
 	}

@@ -9,27 +9,27 @@ public:
 	virtual RString Init( const VideoModeParams &p, bool bAllowUnacceleratedRenderer );
 
 	virtual RString GetApiDescription() const;
-	virtual void GetDisplayResolutions( DisplayResolutions &out ) const;
+	virtual void GetDisplaySpecs(DisplaySpecs &out) const;
 	const RagePixelFormatDesc *GetPixelFormatDesc(RagePixelFormat pf) const;
 
 	bool BeginFrame();
 	void EndFrame();
-	VideoModeParams GetActualVideoModeParams() const;
+	ActualVideoModeParams GetActualVideoModeParams() const;
 	void SetBlendMode( BlendMode mode );
 	bool SupportsTextureFormat( RagePixelFormat pixfmt, bool realtime=false );
 	bool SupportsPerVertexMatrixScale();
-	unsigned CreateTexture( 
-		RagePixelFormat pixfmt, 
+	uintptr_t CreateTexture(
+		RagePixelFormat pixfmt,
 		RageSurface* img,
 		bool bGenerateMipMaps );
-	void UpdateTexture( 
-		unsigned iTexHandle, 
+	void UpdateTexture(
+		uintptr_t iTexHandle,
 		RageSurface* img,
 		int xoffset, int yoffset, int width, int height );
-	void DeleteTexture( unsigned iTexHandle );
+	void DeleteTexture( uintptr_t iTexHandle );
 	void ClearAllTextures();
 	int GetNumTextureUnits();
-	void SetTexture( TextureUnit tu, unsigned iTexture );
+	void SetTexture( TextureUnit tu, uintptr_t iTexture );
 	void SetTextureMode( TextureUnit tu, TextureMode tm );
 	void SetTextureWrapping( TextureUnit tu, bool b );
 	int GetMaxTextureSize() const;
@@ -42,7 +42,7 @@ public:
 	void ClearZBuffer();
 	void SetCullMode( CullMode mode );
 	void SetAlphaTest( bool b );
-	void SetMaterial( 
+	void SetMaterial(
 		const RageColor &emissive,
 		const RageColor &ambient,
 		const RageColor &diffuse,

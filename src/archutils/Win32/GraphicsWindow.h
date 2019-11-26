@@ -2,7 +2,7 @@
 #define GRAPHICS_WINDOW_H
 
 #include <windows.h>
-#include "DisplayResolutions.h"
+#include "DisplaySpec.h"
 class VideoModeParams;
 class DisplayResolution;
 
@@ -28,13 +28,18 @@ namespace GraphicsWindow
 	void CreateGraphicsWindow( const VideoModeParams &p, bool bForceRecreateWindow = false );
 	void DestroyGraphicsWindow();
 
-	void GetDisplayResolutions( DisplayResolutions &out );
+	void GetDisplaySpecs( DisplaySpecs &out );
 
 	const VideoModeParams &GetParams();
 	HDC GetHDC();
 	void Update();
 
 	HWND GetHwnd();
+
+	//dwm functions for vista+
+	static HINSTANCE hInstanceDwmapi = nullptr;
+	static HRESULT(WINAPI* PFN_DwmIsCompositionEnabled)(BOOL*);
+	static HRESULT (WINAPI* PFN_DwmFlush)(VOID);
 };
 
 #endif

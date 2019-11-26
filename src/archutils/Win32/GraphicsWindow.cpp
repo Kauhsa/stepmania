@@ -4,7 +4,7 @@
 #include "RageLog.h"
 #include "RageUtil.h"
 #include "RageDisplay.h"
-#include "DisplayResolutions.h"
+#include "DisplaySpec.h"
 #include "arch/ArchHooks/ArchHooks.h"
 #include "archutils/Win32/AppInstance.h"
 #include "archutils/Win32/Crash.h"
@@ -12,6 +12,7 @@
 #include "archutils/Win32/WindowIcon.h"
 #include "archutils/Win32/GetFileInformation.h"
 #include "CommandLineActions.h"
+#include "DirectXHelpers.h"
 
 #include <set>
 
@@ -22,7 +23,7 @@ static HDC g_HDC;
 static VideoModeParams g_CurrentParams;
 static bool g_bResolutionChanged = false;
 static bool g_bHasFocus = true;
-static HICON g_hIcon = NULL;
+static HICON g_hIcon = nullptr;
 static bool m_bWideWindowClass;
 static bool g_bD3D = false;
 
@@ -35,7 +36,7 @@ static UINT g_iQueryCancelAutoPlayMessage = 0;
 static RString GetNewWindow()
 {
 	HWND h = GetForegroundWindow();
-	if( h == NULL )
+	if( h == nullptr )
 		return "(NULL)";
 
 	DWORD iProcessID;
@@ -91,7 +92,7 @@ static LRESULT CALLBACK GraphicsWindow_WndProc( HWND hWnd, UINT msg, WPARAM wPar
 				}
 				else if( !g_bHasFocus && bHadFocus )
 				{
-					ChangeDisplaySettings( NULL, 0 );
+					ChangeDisplaySettings( nullptr, 0 );
 				}
 			}
 
@@ -110,7 +111,7 @@ static LRESULT CALLBACK GraphicsWindow_WndProc( HWND hWnd, UINT msg, WPARAM wPar
 		case WM_SETCURSOR:
 			if( !g_CurrentParams.windowed )
 			{
-				SetCursor( NULL );
+				SetCursor(nullptr);
 				return 1;
 			}
 			break;
@@ -189,7 +190,7 @@ static void AdjustVideoModeParams( VideoModeParams &p )
 	DEVMODE dm;
 	ZERO( dm );
 	dm.dmSize = sizeof(dm);
-	if( !EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dm) )
+	if( !EnumDisplaySettings(nullptr, ENUM_CURRENT_SETTINGS, &dm) )
 	{
 		p.rate = 60;
 		LOG->Warn( "%s", werr_ssprintf(GetLastError(), "EnumDisplaySettings failed").c_str() );
@@ -225,7 +226,7 @@ RString GraphicsWindow::SetScreenMode( const VideoModeParams &p )
 	if( p.windowed )
 	{
 		// We're going windowed. If we were previously fullscreen, reset.
-		ChangeDisplaySettings( NULL, 0 );
+		ChangeDisplaySettings( nullptr, 0 );
 
 		return RString();
 	}
@@ -243,7 +244,7 @@ RString GraphicsWindow::SetScreenMode( const VideoModeParams &p )
 		DevMode.dmDisplayFrequency = p.rate;
 		DevMode.dmFields |= DM_DISPLAYFREQUENCY;
 	}
-	ChangeDisplaySettings( NULL, 0 );
+	ChangeDisplaySettings( nullptr, 0 );
 
 	int ret = ChangeDisplaySettings( &DevMode, CDS_FULLSCREEN );
 	if( ret != DISP_CHANGE_SUCCESSFUL && (DevMode.dmFields & DM_DISPLAYFREQUENCY) )
@@ -277,20 +278,20 @@ void GraphicsWindow::CreateGraphicsWindow( const VideoModeParams &p, bool bForce
 	// Adjust g_CurrentParams to reflect the actual display settings.
 	AdjustVideoModeParams( g_CurrentParams );
 
-	if( g_hWndMain == NULL || bForceRecreateWindow )
+	if( g_hWndMain == nullptr || bForceRecreateWindow )
 	{
 		int iWindowStyle = GetWindowStyle( p.windowed );
 
 		AppInstance inst;
 		HWND hWnd = CreateWindow( g_sClassName, "app", iWindowStyle,
-						0, 0, 0, 0, NULL, NULL, inst, NULL );
-		if( hWnd == NULL )
+						0, 0, 0, 0, nullptr, nullptr, inst, nullptr );
+		if( hWnd == nullptr )
 			RageException::Throw( "%s", werr_ssprintf( GetLastError(), "CreateWindow" ).c_str() );
 
 		/* If an old window exists, transfer focus to the new window before
 		 * deleting it, or some other window may temporarily get focus, which
 		 * can cause it to be resized. */
-		if( g_hWndMain != NULL )
+		if( g_hWndMain != nullptr )
 		{
 			// While we change to the new window, don't do ChangeDisplaySettings in WM_ACTIVATE.
 			g_bRecreatingVideoMode = true;
@@ -318,15 +319,15 @@ void GraphicsWindow::CreateGraphicsWindow( const VideoModeParams &p, bool bForce
 	} while(0);
 
 	// Update the window icon.
-	if( g_hIcon != NULL )
+	if( g_hIcon != nullptr )
 	{
-		SetClassLong( g_hWndMain, GCL_HICON, (LONG) LoadIcon(NULL,IDI_APPLICATION) );
+		SetClassLongPtrA( g_hWndMain, GCLP_HICON, reinterpret_cast<LONG_PTR>(LoadIcon(nullptr,IDI_APPLICATION)) );
 		DestroyIcon( g_hIcon );
-		g_hIcon = NULL;
+		g_hIcon = nullptr;
 	}
 	g_hIcon = IconFromFile( p.sIconFile );
-	if( g_hIcon != NULL )
-		SetClassLong( g_hWndMain, GCL_HICON, (LONG) g_hIcon );
+	if( g_hIcon != nullptr )
+		SetClassLongPtrA( g_hWndMain, GCLP_HICON, reinterpret_cast<LONG_PTR>(g_hIcon) );
 
 	/* The window style may change as a result of switching to or from fullscreen;
 	 * apply it. Don't change the WS_VISIBLE bit. */
@@ -363,9 +364,9 @@ void GraphicsWindow::CreateGraphicsWindow( const VideoModeParams &p, bool bForce
 	 * If we don't do this, then starting up in a D3D fullscreen window may
 	 * cause all other windows on the system to be resized. */
 	MSG msg;
-	while( PeekMessage( &msg, NULL, 0, 0, PM_NOREMOVE ) )
+	while( PeekMessage( &msg, nullptr, 0, 0, PM_NOREMOVE ) )
 	{
-		GetMessage( &msg, NULL, 0, 0 );
+		GetMessage( &msg, nullptr, 0, 0 );
 		DispatchMessage( &msg );
 	}
 }
@@ -373,36 +374,36 @@ void GraphicsWindow::CreateGraphicsWindow( const VideoModeParams &p, bool bForce
 /** @brief Shut down the window, but don't reset the video mode. */
 void GraphicsWindow::DestroyGraphicsWindow()
 {
-	if( g_HDC != NULL )
+	if( g_HDC != nullptr )
 	{
 		ReleaseDC( g_hWndMain, g_HDC );
-		g_HDC = NULL;
+		g_HDC = nullptr;
 	}
 
 	CHECKPOINT;
 
-	if( g_hWndMain != NULL )
+	if( g_hWndMain != nullptr )
 	{
 		DestroyWindow( g_hWndMain );
-		g_hWndMain = NULL;
+		g_hWndMain = nullptr;
 		CrashHandler::SetForegroundWindow( g_hWndMain );
 	}
 
 	CHECKPOINT;
 
-	if( g_hIcon != NULL )
+	if( g_hIcon != nullptr )
 	{
 		DestroyIcon( g_hIcon );
-		g_hIcon = NULL;
+		g_hIcon = nullptr;
 	}
 
 	CHECKPOINT;
 
 	MSG msg;
-	while( PeekMessage( &msg, NULL, 0, 0, PM_NOREMOVE ) )
+	while( PeekMessage( &msg, nullptr, 0, 0, PM_NOREMOVE ) )
 	{
 		CHECKPOINT;
-		GetMessage( &msg, NULL, 0, 0 );
+		GetMessage( &msg, nullptr, 0, 0 );
 		CHECKPOINT;
 		DispatchMessage( &msg );
 	}
@@ -415,6 +416,19 @@ void GraphicsWindow::Initialize( bool bD3D )
 	// A few things need to be handled differently for D3D.
 	g_bD3D = bD3D;
 
+	//keeping xp on life support -- check for vista+ for dwm
+	if (at_least_vista())
+	{
+		hInstanceDwmapi = LoadLibraryA("dwmapi.dll");
+	}
+
+	//if we have dwm, get function pointers to the dll functions
+	if( hInstanceDwmapi != nullptr )
+	{
+		PFN_DwmFlush =					(HRESULT (WINAPI *)(VOID))GetProcAddress( hInstanceDwmapi, "DwmFlush" );
+		PFN_DwmIsCompositionEnabled =	(HRESULT (WINAPI *)(BOOL*))GetProcAddress( hInstanceDwmapi, "DwmIsCompositionEnabled" );
+	}
+
 	AppInstance inst;
 	do
 	{
@@ -426,10 +440,10 @@ void GraphicsWindow::Initialize( bool bD3D )
 			0,				/* cbClsExtra */
 			0,				/* cbWndExtra */
 			inst,			/* hInstance */
-			NULL,			/* set icon later */
-			LoadCursor( NULL, IDC_ARROW ),	/* default cursor */
-			NULL,			/* hbrBackground */
-			NULL,			/* lpszMenuName */
+			nullptr,			/* set icon later */
+			LoadCursor( nullptr, IDC_ARROW ),	/* default cursor */
+			nullptr,			/* hbrBackground */
+			nullptr,			/* lpszMenuName */
 			wsClassName.c_str()	/* lpszClassName */
 		}; 
 
@@ -444,10 +458,10 @@ void GraphicsWindow::Initialize( bool bD3D )
 			0,				/* cbClsExtra */
 			0,				/* cbWndExtra */
 			inst,			/* hInstance */
-			NULL,			/* set icon later */
-			LoadCursor( NULL, IDC_ARROW ),	/* default cursor */
-			NULL,			/* hbrBackground */
-			NULL,			/* lpszMenuName */
+			nullptr,			/* set icon later */
+			LoadCursor( nullptr, IDC_ARROW ),	/* default cursor */
+			nullptr,			/* hbrBackground */
+			nullptr,			/* lpszMenuName */
 			g_sClassName	/* lpszClassName */
 		}; 
 
@@ -467,7 +481,7 @@ void GraphicsWindow::Shutdown()
 	 * It'd be nice to not do this: Windows will do it when we quit, and if
 	 * we're shutting down OpenGL to try D3D, this will cause extra mode
 	 * switches. However, we need to do this before displaying dialogs. */
-	ChangeDisplaySettings( NULL, 0 );
+	ChangeDisplaySettings( nullptr, 0 );
 
 	AppInstance inst;
 	UnregisterClass( g_sClassName, inst );
@@ -475,7 +489,7 @@ void GraphicsWindow::Shutdown()
 
 HDC GraphicsWindow::GetHDC()
 {
-	ASSERT( g_HDC != NULL );
+	ASSERT( g_HDC != nullptr );
 	return g_HDC;
 }
 
@@ -487,15 +501,29 @@ const VideoModeParams &GraphicsWindow::GetParams()
 void GraphicsWindow::Update()
 {
 	MSG msg;
-	while( PeekMessage( &msg, NULL, 0, 0, PM_NOREMOVE ) )
+	while( PeekMessage( &msg, nullptr, 0, 0, PM_NOREMOVE ) )
 	{
-		GetMessage( &msg, NULL, 0, 0 );
+		GetMessage( &msg, nullptr, 0, 0 );
 		DispatchMessage( &msg );
 	}
 
 	HOOKS->SetHasFocus( g_bHasFocus );
 
-	if( g_bResolutionChanged && DISPLAY != NULL )
+	if (g_CurrentParams.vsync)
+	{
+		//if we can use DWM
+		if( hInstanceDwmapi != nullptr )
+		{
+			BOOL compositeEnabled = true;
+			PFN_DwmIsCompositionEnabled(&compositeEnabled);
+			if (compositeEnabled)
+			{
+				PFN_DwmFlush();
+			}
+		}
+	}
+
+	if( g_bResolutionChanged && DISPLAY != nullptr )
 	{
 		//LOG->Warn( "Changing resolution" );
 
@@ -511,29 +539,53 @@ HWND GraphicsWindow::GetHwnd()
 	return g_hWndMain;
 }
 
-void GraphicsWindow::GetDisplayResolutions( DisplayResolutions &out )
+void GraphicsWindow::GetDisplaySpecs( DisplaySpecs &out )
 {
-	DEVMODE dm;
-	ZERO( dm );
-	dm.dmSize = sizeof(dm);
-	int i=0;
-	while(EnumDisplaySettings(NULL, i++, &dm))
-	{
+	const size_t DM_DRIVER_EXTRA_BYTES = 4096;
+	const size_t DMSIZE = sizeof( DEVMODE ) + DM_DRIVER_EXTRA_BYTES;
+	auto reset = [=]( std::unique_ptr<DEVMODE> &p ) {
+		::memset( p.get(), 0, DMSIZE );
+		p->dmSize = sizeof( DEVMODE );
+		p->dmDriverExtra = static_cast<WORD> (DM_DRIVER_EXTRA_BYTES);
+	};
+	auto isvalid = []( std::unique_ptr<DEVMODE> &dm ) {
 		// Windows 8 and later don't support less than 32bpp, so don't even test
-		// for them.  GetDisplayResolutions is only for resolutions anyway. -Kyz
-		if(dm.dmBitsPerPel < 32)
+		// for them.  GetDisplaySpecs only tracks resolution/refresh rate anyway. -Kyz, drewbarbs
+		return (dm->dmFields & DM_PELSWIDTH) && (dm->dmFields & DM_PELSHEIGHT) && (dm->dmFields & DM_DISPLAYFREQUENCY)
+			&& (dm->dmBitsPerPel >= 32 || !(dm->dmFields & DM_BITSPERPEL));
+	};
+
+	std::unique_ptr<DEVMODE> dm( static_cast<DEVMODE*> (operator new(DMSIZE)) );
+	reset( dm );
+
+	int i = 0;
+	std::set<DisplayMode> modes;
+	while ( EnumDisplaySettingsEx( nullptr, i++, dm.get(), 0 ) )
+	{
+		if ( isvalid( dm ) && ChangeDisplaySettingsEx( nullptr, dm.get(), nullptr, CDS_TEST, nullptr ) == DISP_CHANGE_SUCCESSFUL )
 		{
-			continue;
+			DisplayMode m = { dm->dmPelsWidth, dm->dmPelsHeight, static_cast<double> (dm->dmDisplayFrequency) };
+			modes.insert(m);
 		}
-		DisplayResolution res = { dm.dmPelsWidth, dm.dmPelsHeight };
-		std::set<DisplayResolution>::iterator entry= out.find(res);
-		if(entry == out.end())
-		{
-			if(ChangeDisplaySettings(&dm, CDS_TEST)==DISP_CHANGE_SUCCESSFUL)
-			{
-				out.insert(res);
-			}
-		}
+		reset( dm );
+	}
+
+	reset( dm );
+	// Get the current display mode
+	if ( EnumDisplaySettingsEx( nullptr, ENUM_CURRENT_SETTINGS, dm.get(), 0 ) && isvalid( dm ) )
+	{
+		DisplayMode m = { dm->dmPelsWidth, dm->dmPelsHeight, static_cast<double> (dm->dmDisplayFrequency) };
+		RectI bounds = { 0, 0, static_cast<int> (m.width), static_cast<int> (m.height) };
+		out.insert( DisplaySpec( "", "Fullscreen", modes, m, bounds ) );
+	}
+	else if ( !modes.empty() )
+	{
+		LOG->Warn( "Could not retrieve valid current display mode" );
+		out.insert( DisplaySpec( "", "Fullscreen", *modes.begin() ) );
+	}
+	else
+	{
+		LOG->Warn( "Could not retrieve *any* DisplaySpec's!" );
 	}
 }
 

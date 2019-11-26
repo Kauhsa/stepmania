@@ -111,6 +111,7 @@ public:
 	 * @brief Copy a new Actor to the old one.
 	 * @param cpy the new Actor to use in place of this one. */
 	Actor( const Actor &cpy );
+	Actor &operator=( Actor other );
 	virtual ~Actor();
 	virtual Actor *Copy() const;
 	virtual void InitState();
@@ -601,11 +602,11 @@ public:
 	void PlayCommandNoRecurse( const Message &msg );
 
 	// Commands by reference
-	virtual void RunCommands( const LuaReference& cmds, const LuaReference *pParamTable = NULL );
-	void RunCommands( const apActorCommands& cmds, const LuaReference *pParamTable = NULL ) { this->RunCommands( *cmds, pParamTable ); }	// convenience
-	virtual void RunCommandsRecursively( const LuaReference& cmds, const LuaReference *pParamTable = NULL ) { RunCommands(cmds, pParamTable); }
+	virtual void RunCommands( const LuaReference& cmds, const LuaReference *pParamTable = nullptr );
+	void RunCommands( const apActorCommands& cmds, const LuaReference *pParamTable = nullptr ) { this->RunCommands( *cmds, pParamTable ); }	// convenience
+	virtual void RunCommandsRecursively( const LuaReference& cmds, const LuaReference *pParamTable = nullptr ) { RunCommands(cmds, pParamTable); }
 	// If we're a leaf, then execute this command.
-	virtual void RunCommandsOnLeaves( const LuaReference& cmds, const LuaReference *pParamTable = NULL ) { RunCommands(cmds, pParamTable); }
+	virtual void RunCommandsOnLeaves( const LuaReference& cmds, const LuaReference *pParamTable = nullptr ) { RunCommands(cmds, pParamTable); }
 
 	// Messages
 	virtual void HandleMessage( const Message &msg );
@@ -660,6 +661,7 @@ protected:
 	RageVector2	m_size;
 	TweenState	m_current;
 	TweenState	m_start;
+	TweenState	m_current_with_effects;
 	struct TweenStateAndInfo
 	{
 		TweenState state;

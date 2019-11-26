@@ -1,6 +1,6 @@
 #import "global.h"
 #import "LowLevelWindow_MacOSX.h"
-#import "DisplayResolutions.h"
+#import "DisplaySpec.h"
 #import "RageUtil.h"
 #import "RageThreads.h"
 #import "RageDisplay_OGL_Helpers.h"
@@ -109,7 +109,7 @@ public:
 - (void) setParams:(NSValue *)params
 {
 	const VideoModeParams &p = *(const VideoModeParams *)[params pointerValue];
-	NSRect contentRect = { { 0, 0 }, { p.width, p.height } };	
+	NSRect contentRect = { { 0, 0 }, { static_cast<CGFloat>(p.width), static_cast<CGFloat>(p.height) } };	
 
 	[m_Window setContentSize:contentRect.size];
 	[m_Window setTitle:[NSString stringWithUTF8String:p.sWindowTitle.c_str()]];		
@@ -188,7 +188,7 @@ public:
 	RenderTarget_MacOSX( id shareContext );
 	~RenderTarget_MacOSX();
 	void Create( const RenderTargetParam &param, int &iTextureWidthOut, int &iTextureHeightOut );
-	unsigned GetTexture() const { return m_iTexHandle; }
+	uintptr_t GetTexture() const { return static_cast<uintptr_t>(m_iTexHandle); }
 	void StartRenderingTo();
 	void FinishRenderingTo();
 	
@@ -255,7 +255,7 @@ void RenderTarget_MacOSX::Create( const RenderTargetParam &param, int &iTextureW
 	
 	glTexImage2D( GL_TEXTURE_2D, 0, param.bWithAlpha? GL_RGBA8:GL_RGB8,
 		      iTextureWidth, iTextureHeight, 0, param.bWithAlpha? GL_RGBA:GL_RGB,
-		      GL_UNSIGNED_BYTE, NULL );
+		      GL_UNSIGNED_BYTE, nil);
 	GLenum error = glGetError();
 	ASSERT_M(error == GL_NO_ERROR, RageDisplay_Legacy_Helpers::GLToString(error));
 	
@@ -293,7 +293,7 @@ void RenderTarget_MacOSX::FinishRenderingTo()
 }
 
 
-LowLevelWindow_MacOSX::LowLevelWindow_MacOSX() : m_Context(nil), m_BGContext(nil), m_CurrentDisplayMode(NULL), m_DisplayID(0)
+LowLevelWindow_MacOSX::LowLevelWindow_MacOSX() : m_Context(nil), m_BGContext(nil), m_CurrentDisplayMode(nil), m_DisplayID(0)
 {
 	POOL;
 	m_WindowDelegate = [[SMWindowDelegate alloc] init];
@@ -323,12 +323,12 @@ void *LowLevelWindow_MacOSX::GetProcAddress( RString s )
 	// Both functions mentioned in there are deprecated in 10.4.
 	const RString& symbolName( '_' + s );
 	const uint32_t count = _dyld_image_count();
-	NSSymbol symbol = NULL;
+	NSSymbol symbol = nil;
 	const uint32_t options = NSLOOKUPSYMBOLINIMAGE_OPTION_RETURN_ON_ERROR;
 	
 	for( uint32_t i = 0; i < count && !symbol; ++i )
 		symbol = NSLookupSymbolInImage( _dyld_get_image_header(i), symbolName, options );
-	return symbol ? NSAddressOfSymbol( symbol ) : NULL;
+	return symbol ? NSAddressOfSymbol( symbol ) : nil;
 }
 
 RString LowLevelWindow_MacOSX::TryVideoMode( const VideoModeParams& p, bool& newDeviceOut )
@@ -462,13 +462,13 @@ void LowLevelWindow_MacOSX::ShutDownFullScreen()
 	ASSERT( err == kCGErrorSuccess );
 	SetActualParamsFromMode( m_CurrentDisplayMode );
 	// We don't own this so we cannot release it.
-	m_CurrentDisplayMode = NULL;
+	m_CurrentDisplayMode = nil;
 	m_CurrentParams.windowed = true;
 }
 
 int LowLevelWindow_MacOSX::ChangeDisplayMode( const VideoModeParams& p )
 {	
-	CFDictionaryRef mode = NULL;
+	CFDictionaryRef mode = nil;
 	CFDictionaryRef newMode;
 	CGDisplayErr err;
 	
@@ -483,10 +483,10 @@ int LowLevelWindow_MacOSX::ChangeDisplayMode( const VideoModeParams& p )
 	}
 	
 	if( p.rate == REFRESH_DEFAULT )
-		newMode = CGDisplayBestModeForParameters( kCGDirectMainDisplay, p.bpp, p.width, p.height, NULL );
+		newMode = CGDisplayBestModeForParameters( kCGDirectMainDisplay, p.bpp, p.width, p.height, nil);
 	else
 		newMode = CGDisplayBestModeForParametersAndRefreshRate( kCGDirectMainDisplay, p.bpp,
-									p.width, p.height, p.rate, NULL );
+									p.width, p.height, p.rate, nil);
 	
 	
 	err = CGDisplaySwitchToMode( kCGDirectMainDisplay, newMode );
@@ -516,6 +516,9 @@ static size_t GetDisplayBitsPerPixel( CGDirectDisplayID displayId )
 		depth = 16;
 	else if(CFStringCompare(pixEnc, CFSTR(IO8BitIndexedPixels), kCFCompareCaseInsensitive) == kCFCompareEqualTo)
 		depth = 8;
+
+    CFRelease(pixEnc);
+    CGDisplayModeRelease(mode);
 	
 	return depth;
 
@@ -564,28 +567,50 @@ static bool GetBoolValue( CFTypeRef r )
 	return r && CFGetTypeID( r ) == CFBooleanGetTypeID() && CFBooleanGetValue( CFBooleanRef(r) );
 }
 
-void LowLevelWindow_MacOSX::GetDisplayResolutions( DisplayResolutions &dr ) const
+static double GetDoubleValue( CFTypeRef r )
+{
+	double ret;
+
+	if( !r || CFGetTypeID(r) != CFNumberGetTypeID() || !CFNumberGetValue(CFNumberRef(r), kCFNumberDoubleType, &ret) )
+		return 0;
+	return ret;
+}
+
+static DisplayMode ConvertDisplayMode( CFDictionaryRef dict )
+{
+	int width = GetIntValue( CFDictionaryGetValue(dict, kCGDisplayWidth) );
+	int height = GetIntValue( CFDictionaryGetValue(dict, kCGDisplayHeight) );
+	double rate = GetDoubleValue( CFDictionaryGetValue(dict, kCGDisplayRefreshRate) );
+
+	return { static_cast<unsigned int> (width), static_cast<unsigned int> (height), rate};
+}
+
+void LowLevelWindow_MacOSX::GetDisplaySpecs( DisplaySpecs &specs ) const
 {
 	CFArrayRef modes = CGDisplayAvailableModes( kCGDirectMainDisplay );
 	ASSERT( modes );
 	const CFIndex count = CFArrayGetCount( modes );
-	
+
+	std::set<DisplayMode> available;
+	CFDictionaryRef currentModeDict = CGDisplayCurrentMode( kCGDirectMainDisplay );
+	DisplayMode current = ConvertDisplayMode( currentModeDict );
+
 	for( CFIndex i = 0; i < count; ++i )
 	{
 		CFDictionaryRef dict = (CFDictionaryRef)CFArrayGetValueAtIndex( modes, i );
-		int width = GetIntValue( CFDictionaryGetValue(dict, kCGDisplayWidth) );
-		int height = GetIntValue( CFDictionaryGetValue(dict, kCGDisplayHeight) );
 		CFTypeRef safe = CFDictionaryGetValue( dict, kCGDisplayModeIsSafeForHardware );
-		bool stretched = GetBoolValue( CFDictionaryGetValue(dict, kCGDisplayModeIsStretched) );
-		
-		if( !width || !height )
+		DisplayMode mode = ConvertDisplayMode( dict );
+
+		if( !mode.width || !mode.height )
 			continue;
 		if( safe && !GetBoolValue( safe ) )
 			continue;
-		DisplayResolution res = { width, height, stretched };
-		dr.insert( res );
+		available.insert( mode );
 	}
 	// Do not release modes! We don't own them here.
+	RectI bounds( 0, 0, current.width, current.height );
+	DisplaySpec s( "", "Fullscreen", available, current, bounds );
+	specs.insert( s );
 }
 
 void LowLevelWindow_MacOSX::SwapBuffers()

@@ -12,9 +12,8 @@
 #include "GameState.h"
 #include "StepMania.h"
 #include "Game.h"
-#include "Foreach.h"
 #include "GameConstantsAndTypes.h"
-#include "DisplayResolutions.h"
+#include "DisplaySpec.h"
 #include "LocalizedString.h"
 #include "SpecialFiles.h"
 #include "RageLog.h"
@@ -103,9 +102,9 @@ static void MoveMap( int &sel, IPreference &opt, bool ToSel, const T *mapping, u
 template <class T>
 static void MoveMap( int &sel, const ConfOption *pConfOption, bool ToSel, const T *mapping, unsigned cnt )
 {
-	ASSERT( pConfOption != NULL );
+	ASSERT( pConfOption != nullptr );
 	IPreference *pPref = IPreference::GetPreferenceByName( pConfOption->m_sPrefName );
-	ASSERT_M( pPref != NULL, pConfOption->m_sPrefName );
+	ASSERT_M( pPref != nullptr, pConfOption->m_sPrefName );
 
 	MoveMap( sel, *pPref, ToSel, mapping, cnt );
 }
@@ -114,7 +113,7 @@ template <class T>
 static void MovePref( int &iSel, bool bToSel, const ConfOption *pConfOption )
 {
 	IPreference *pPref = IPreference::GetPreferenceByName( pConfOption->m_sPrefName );
-	ASSERT_M( pPref != NULL, pConfOption->m_sPrefName );
+	ASSERT_M( pPref != nullptr, pConfOption->m_sPrefName );
 
 	if( bToSel )
 	{
@@ -134,7 +133,7 @@ template <>
 void MovePref<bool>( int &iSel, bool bToSel, const ConfOption *pConfOption )
 {
 	IPreference *pPref = IPreference::GetPreferenceByName( pConfOption->m_sPrefName );
-	ASSERT_M( pPref != NULL, pConfOption->m_sPrefName );
+	ASSERT_M( pPref != nullptr, pConfOption->m_sPrefName );
 
 	if( bToSel )
 	{
@@ -165,9 +164,9 @@ static void GameChoices( vector<RString> &out )
 {
 	vector<const Game*> aGames;
 	GAMEMAN->GetEnabledGames( aGames );
-	FOREACH( const Game*, aGames, g )
+	for (Game const *g : aGames)
 	{
-		RString sGameName = (*g)->m_szName;
+		RString sGameName = g->m_szName;
 		out.push_back( sGameName );
 	}
 }
@@ -198,13 +197,13 @@ static void LanguageChoices( vector<RString> &out )
 	THEME->GetLanguages( vs );
 	SortRStringArray( vs, true );
 
-	FOREACH_CONST( RString, vs, s )
+	for (RString const &s : vs)
 	{
-		const LanguageInfo *pLI = GetLanguageInfo( *s );
+		const LanguageInfo *pLI = GetLanguageInfo( s );
 		if( pLI )
 			out.push_back( THEME->GetString("NativeLanguageNames", pLI->szEnglishName) );
 		else
-			out.push_back( *s );
+			out.push_back( s );
 	}
 }
 
@@ -244,26 +243,29 @@ static void Language( int &sel, bool ToSel, const ConfOption *pConfOption )
 static void ThemeChoices( vector<RString> &out )
 {
 	THEME->GetSelectableThemeNames( out );
-	FOREACH( RString, out, s )
-		*s = THEME->GetThemeDisplayName( *s );
+	for (RString &s : out)
+		s = THEME->GetThemeDisplayName( s );
 }
 
-static DisplayResolutions display_resolution_list;
-static void cache_display_resolution_list()
+static DisplaySpecs display_specs;
+static void cache_display_specs()
 {
-	if(display_resolution_list.empty())
+	if(display_specs.empty())
 	{
-		DISPLAY->GetDisplayResolutions(display_resolution_list);
+		DISPLAY->GetDisplaySpecs(display_specs);
 	}
 }
 
 static void DisplayResolutionChoices( vector<RString> &out )
 {
-	cache_display_resolution_list();
-	FOREACHS_CONST( DisplayResolution, display_resolution_list, iter )
+	cache_display_specs();
+	for (DisplaySpec const &iter : display_specs)
 	{
-		RString s = ssprintf("%dx%d", iter->iWidth, iter->iHeight);
-		out.push_back( s );
+		if (iter.currentMode() != nullptr)
+		{
+			RString s = ssprintf("%dx%d", iter.currentMode()->width, iter.currentMode()->height);
+			out.push_back(s);
+		}
 	}
 }
 
@@ -516,6 +518,8 @@ static void MaxHighScoresPerListForPlayer(int& sel, bool to_sel, ConfOption cons
 
 
 #include "LuaManager.h"
+#include "LuaBinding.h"
+
 static int GetTimingDifficulty()
 {
 	int iTimingDifficulty = 0;
@@ -583,12 +587,14 @@ static void DisplayResolutionM( int &sel, bool ToSel, const ConfOption *pConfOpt
 {
 	static vector<res_t> res_choices;
 
-	if(res_choices.empty())
+	if( res_choices.empty() )
 	{
-		cache_display_resolution_list();
-		FOREACHS_CONST(DisplayResolution, display_resolution_list, iter)
+		for ( DisplaySpec const &iter : display_specs)
 		{
-			res_choices.push_back(res_t(iter->iWidth, iter->iHeight));
+			if ( iter.currentMode() != nullptr )
+			{
+				res_choices.push_back( res_t( iter.currentMode()->width, iter.currentMode()->height ) );
+			}
 		}
 	}
 
@@ -704,16 +710,39 @@ static void EditClearPromptThreshold(int& sel, bool to_sel, const ConfOption* co
 	MoveMap(sel, conf_option, to_sel, mapping, ARRAYLEN(mapping));
 }
 
+static void CustomSongsCount(int& sel, bool to_sel, const ConfOption* conf_option)
+{
+	int mapping[]= {10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 1000};
+	MoveMap(sel, conf_option, to_sel, mapping, ARRAYLEN(mapping));
+}
+
+static void CustomSongsLoadTimeout(int& sel, bool to_sel, const ConfOption* conf_option)
+{
+	int mapping[]= {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 1000};
+	MoveMap(sel, conf_option, to_sel, mapping, ARRAYLEN(mapping));
+}
+
+static void CustomSongsMaxSeconds(int& sel, bool to_sel, const ConfOption* conf_option)
+{
+	int mapping[]= {60, 90, 120, 150, 180, 210, 240, 10000};
+	MoveMap(sel, conf_option, to_sel, mapping, ARRAYLEN(mapping));
+}
+
+static void CustomSongsMaxMegabytes(int& sel, bool to_sel, const ConfOption* conf_option)
+{
+	int mapping[]= {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 1000};
+	MoveMap(sel, conf_option, to_sel, mapping, ARRAYLEN(mapping));
+}
 static vector<ConfOption> g_ConfOptions;
 static void InitializeConfOptions()
 {
 	if( !g_ConfOptions.empty() )
 		return;
 
-	// Clear the display_resolution_list so that we don't get problems from
+	// Clear the display_specs so that we don't get problems from
 	// caching it.  If the DisplayResolution option row is on the screen, it'll
 	// recache the list. -Kyz
-	display_resolution_list.clear();
+	display_specs.clear();
 
 	// There are a couple ways of getting the current preference column or turning
 	// a new choice in the interface into a new preference. The easiest is when
@@ -738,7 +767,6 @@ static void InitializeConfOptions()
 	ADD( ConfOption( "DefaultNoteSkin",		DefaultNoteSkin,	DefaultNoteSkinChoices ) );
 	ADD( ConfOption( "ShowInstructions",		MovePref<bool>,		"Skip","Show") );
 	ADD( ConfOption( "ShowCaution",			MovePref<bool>,		"Skip","Show") );
-	ADD( ConfOption( "DancePointsForOni",		MovePref<bool>,		"Percent","Dance Points") );
 	ADD( ConfOption( "MusicWheelUsesSections",	MovePref<MusicWheelUsesSections>, "Never","Always","Title Only") );
 	ADD( ConfOption( "CourseSortOrder",		MovePref<CourseSortOrders>, "Num Songs","Average Feet","Total Feet","Ranking") );
 	ADD( ConfOption( "MoveRandomToEnd",		MovePref<bool>,		"No","Yes") );
@@ -808,6 +836,11 @@ static void InitializeConfOptions()
 	ADD( ConfOption( "PickExtraStage",		MovePref<bool>,		"Off","On" ) );
 	ADD( ConfOption( "UseUnlockSystem",		MovePref<bool>,		"Off","On" ) );
 	ADD( ConfOption( "AllowSongDeletion",   MovePref<bool>,     "Off","On" ) );
+	ADD(ConfOption("CustomSongsEnable", MovePref<bool>, "Off", "On"));
+	ADD(ConfOption("CustomSongsMaxCount", CustomSongsCount, "10", "20", "30", "40", "50", "60", "70", "80", "90", "100", "1000"));
+	ADD(ConfOption("CustomSongsLoadTimeout", CustomSongsLoadTimeout, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "20", "30", "1000"));
+	ADD(ConfOption("CustomSongsMaxSeconds", CustomSongsMaxSeconds, "60", "90", "120", "150", "180", "210", "240", "10000"));
+	ADD(ConfOption("CustomSongsMaxMegabytes", CustomSongsLoadTimeout, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "20", "30", "1000"));
 
 	// Machine options
 	ADD( ConfOption( "MenuTimer",			MovePref<bool>,		"Off","On" ) );
@@ -914,12 +947,12 @@ ConfOption *ConfOption::Find( RString name )
 		return opt;
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 void ConfOption::UpdateAvailableOptions()
 {
-	if( MakeOptionsListCB != NULL )
+	if( MakeOptionsListCB != nullptr )
 	{
 		names.clear();
 		MakeOptionsListCB( names );
@@ -930,6 +963,19 @@ void ConfOption::MakeOptionsList( vector<RString> &out ) const
 {
 	out = names;
 }
+
+static const char *OptEffectNames[] = {
+	"SavePreferences",
+	"ApplyGraphics",
+	"ApplyTheme",
+	"ChangeGame",
+	"ApplySound",
+	"ApplySong",
+	"ApplyAspectRatio"
+};
+XToString( OptEffect );
+StringToX( OptEffect );
+LuaXType( OptEffect );
 
 /**
  * @file

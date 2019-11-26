@@ -224,8 +224,7 @@ inline bool MyLua_checkintboolean( lua_State *L, int iArg )
 	int iType = lua_type( L, iArg );
 	if( iType == LUA_TNUMBER )
 	{
-		int iValue = lua_tointeger( L, iArg );
-		return iValue != 0;
+		return lua_tointeger(L, iArg) != 0;
 	}
 
 	return MyLua_checkboolean( L, iArg );
@@ -240,7 +239,7 @@ inline bool TableContainsOnlyStrings(lua_State* L, int index)
 	{
 		// `key' is at index -2 and `value' at index -1
 		const char *pValue = lua_tostring(L, -1);
-		if(pValue == NULL)
+		if(pValue == nullptr)
 		{
 			// Was going to print an error to the log with the key that failed,
 			// but didn't want to pull in RageLog. -Kyz

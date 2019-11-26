@@ -63,26 +63,15 @@ enum ShowDancingCharacters
 	NUM_ShowDancingCharacters,
 	ShowDancingCharacters_Invalid
 };
-enum BannerCacheMode
+enum ImageCacheMode
 {
-	BNCACHE_OFF,
-	BNCACHE_LOW_RES_PRELOAD, // preload low-res on start
-	BNCACHE_LOW_RES_LOAD_ON_DEMAND, // preload low-res on screen load
-	BNCACHE_FULL,
-	NUM_BannerCacheMode,
-	BannerCacheMode_Invalid
+	IMGCACHE_OFF,
+	IMGCACHE_LOW_RES_PRELOAD, // preload low-res on start
+	IMGCACHE_LOW_RES_LOAD_ON_DEMAND, // preload low-res on screen load
+	IMGCACHE_FULL,
+	NUM_ImageCacheMode,
+	ImageCacheMode_Invalid
 };
-/*
-enum BackgroundCacheMode
-{
-	BGCACHE_OFF,
-	BGCACHE_LOW_RES_PRELOAD, // preload low-res on start
-	BGCACHE_LOW_RES_LOAD_ON_DEMAND, // preload low-res on screen load
-	BGCACHE_FULL,
-	NUM_BackgroundCacheMode,
-	BackgroundCacheMode_Invalid
-};
-*/
 enum HighResolutionTextures
 {
 	HighResolutionTextures_Auto,
@@ -159,6 +148,7 @@ protected:
 
 public:
 	Preference<bool>	m_bWindowed;
+	Preference<RString>	m_sDisplayId;
 	Preference<int>	m_iDisplayWidth;
 	Preference<int>	m_iDisplayHeight;
 	Preference<float>	m_fDisplayAspectRatio;
@@ -171,6 +161,7 @@ public:
 	Preference<int>	m_iMaxTextureResolution;
 	Preference<int>	m_iRefreshRate;
 	Preference<bool>	m_bAllowMultitexture;
+	Preference<bool> m_bFullscreenIsBorderlessWindow;
 	Preference<bool>	m_bShowStats;
 	Preference<bool>	m_bShowBanners;
 	Preference<bool>	m_bShowMouseCursor;
@@ -182,8 +173,7 @@ public:
 	Preference<bool>	m_bPAL;
 	Preference<bool>	m_bDelayedTextureDelete;
 	Preference<bool>	m_bDelayedModelDelete;
-	Preference<BannerCacheMode>		m_BannerCache;
-	//Preference<BackgroundCacheMode>		m_BackgroundCache;
+	Preference<ImageCacheMode>		m_ImageCache;
 	Preference<bool>	m_bFastLoad;
 	Preference<bool>	m_bFastLoadAdditionalSongs;
 	Preference<RString> m_NeverCacheList;
@@ -221,7 +211,6 @@ public:
 	Preference<bool>	m_AllowMultipleToasties;
 	Preference<TapNoteScore> m_MinTNSToHideNotes;
 	Preference<Maybe>	m_ShowSongOptions;
-	Preference<bool>	m_bDancePointsForOni;
 	Preference<bool>	m_bPercentageScoring;
 	Preference<float>	m_fMinPercentageForMachineSongHighScore;
 	Preference<float>	m_fMinPercentageForMachineCourseHighScore;
@@ -294,6 +283,7 @@ public:
 	Preference<bool>	m_bSmoothLines;
 	Preference<int>	m_iSoundWriteAhead;
 	Preference<RString>	m_iSoundDevice;	
+	Preference<int> m_iRageSoundSampleCountClamp;
 	Preference<int>	m_iSoundPreferredSampleRate;
 	Preference<RString>	m_sLightsStepsDifficulty;
 	Preference<bool>	m_bAllowUnacceleratedRenderer;
@@ -309,6 +299,12 @@ public:
 
 	/** @brief Enable some quirky behavior used by some older versions of StepMania. */
 	Preference<bool>	m_bQuirksMode;
+
+	Preference<bool> m_custom_songs_enable;
+	Preference<unsigned int> m_custom_songs_max_count;
+	Preference<float> m_custom_songs_load_timeout;
+	Preference<float> m_custom_songs_max_seconds;
+	Preference<float> m_custom_songs_max_megabytes;
 
 	// Debug:
 	Preference<bool>	m_bLogToDisk;

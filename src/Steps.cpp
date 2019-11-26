@@ -33,6 +33,9 @@
 /* register DisplayBPM with StringConversion */
 #include "EnumHelper.h"
 
+// For hashing hart keys - Mina
+#include "CryptManager.h"
+
 static const char *DisplayBPMNames[] =
 {
 	"Actual",
@@ -43,7 +46,7 @@ XToString( DisplayBPM );
 LuaXType( DisplayBPM );
 
 Steps::Steps(Song *song): m_StepsType(StepsType_Invalid), m_pSong(song),
-	parent(NULL), m_pNoteData(new NoteData), m_bNoteDataIsFilled(false), 
+	parent(nullptr), m_pNoteData(new NoteData), m_bNoteDataIsFilled(false), 
 	m_sNoteDataCompressed(""), m_sFilename(""), m_bSavedToDisk(false), 
 	m_LoadedFromProfile(ProfileSlot_Invalid), m_iHash(0),
 	m_sDescription(""), m_sChartStyle(""), 
@@ -292,7 +295,7 @@ void Steps::TidyUpData()
 void Steps::CalculateRadarValues( float fMusicLengthSeconds )
 {
 	// If we're autogen, don't calculate values.  GetRadarValues will take from our parent.
-	if( parent != NULL )
+	if( parent != nullptr )
 		return;
 
 	if( m_bAreCachedRadarValuesJustLoaded )
@@ -345,7 +348,16 @@ void Steps::CalculateRadarValues( float fMusicLengthSeconds )
 		NoteDataUtil::CalculateRadarValues( tempNoteData, fMusicLengthSeconds, m_CachedRadarValues[0] );
 		fill_n( m_CachedRadarValues + 1, NUM_PLAYERS-1, m_CachedRadarValues[0] );
 	}
-	GAMESTATE->SetProcessedTimingData(NULL);
+	GAMESTATE->SetProcessedTimingData(nullptr);
+}
+
+void Steps::ChangeFilenamesForCustomSong()
+{
+	m_sFilename= custom_songify_path(m_sFilename);
+	if(!m_MusicFile.empty())
+	{
+		m_MusicFile= custom_songify_path(m_MusicFile);
+	}
 }
 
 void Steps::Decompress() const
@@ -489,7 +501,7 @@ void Steps::DeAutogen( bool bCopyNoteData )
 	m_iMeter		= Real()->m_iMeter;
 	copy( Real()->m_CachedRadarValues, Real()->m_CachedRadarValues + NUM_PLAYERS, m_CachedRadarValues );
 	m_sCredit		= Real()->m_sCredit;
-	parent = NULL;
+	parent = nullptr;
 
 	if( bCopyNoteData )
 		Compress();
@@ -510,7 +522,7 @@ void Steps::CopyFrom( Steps* pSource, StepsType ntTo, float fMusicLengthSeconds 
 	NoteData noteData;
 	pSource->GetNoteData( noteData );
 	noteData.SetNumTracks( GAMEMAN->GetStepsTypeInfo(ntTo).iNumTracks );
-	parent = NULL;
+	parent = nullptr;
 	m_Timing = pSource->m_Timing;
 	this->m_pSong = pSource->m_pSong;
 	this->m_Attacks = pSource->m_Attacks;
@@ -613,6 +625,77 @@ void Steps::SetCachedRadarValues( const RadarValues v[NUM_PLAYERS] )
 	copy( v, v + NUM_PLAYERS, m_CachedRadarValues );
 	m_bAreCachedRadarValuesJustLoaded = true;
 }
+
+RString Steps::GenerateChartKey()
+{
+	ChartKey = this->GenerateChartKey(*m_pNoteData, this->GetTimingData());
+	return ChartKey;
+}
+RString Steps::GetChartKey()
+{
+	if (ChartKey.empty()) {
+		this->Decompress();
+		ChartKey = this->GenerateChartKey(*m_pNoteData, this->GetTimingData());
+		this->Compress();
+	}
+	return ChartKey;
+}
+RString Steps::GenerateChartKey(NoteData &nd, TimingData *td)
+{
+	RString k = "";
+	RString o = "";
+	float bpm;
+	nd.LogNonEmptyRows();
+	std::vector<int>& nerv = nd.GetNonEmptyRowVector();
+
+
+	RString firstHalf = "";
+	RString secondHalf = "";
+
+#pragma omp parallel sections
+	{
+#pragma omp section
+		{
+			for (size_t r = 0; r < nerv.size() / 2; r++) {
+				int row = nerv[r];
+				for (int t = 0; t < nd.GetNumTracks(); ++t) {
+					const TapNote &tn = nd.GetTapNote(t, row);
+					std::ostringstream os;
+					os << tn.type;
+					firstHalf.append(os.str());
+				}
+				bpm = td->GetBPMAtRow(row);
+				std::ostringstream os;
+				os << static_cast<int>(bpm + 0.374643f);
+				firstHalf.append(os.str());
+			}
+		}
+
+#pragma omp section
+		{
+			for (size_t r = nerv.size() / 2; r < nerv.size(); r++) {
+				int row = nerv[r];
+				for (int t = 0; t < nd.GetNumTracks(); ++t) {
+					const TapNote &tn = nd.GetTapNote(t, row);
+					std::ostringstream os;
+					os << tn.type;
+					secondHalf.append(os.str());
+				}
+				bpm = td->GetBPMAtRow(row);
+				std::ostringstream os;
+				os << static_cast<int>(bpm + 0.374643f);
+				firstHalf.append(os.str());
+			}
+		}
+	}
+	k = firstHalf + secondHalf;
+
+	//ChartKeyRecord = k;
+	o.append("X");	// I was thinking of using "C" to indicate chart.. however.. X is cooler... - Mina
+	o.append(BinaryToHex(CryptManager::GetSHA1ForString(k)));
+	return o;
+}
+
 
 // lua start
 #include "LuaBinding.h"

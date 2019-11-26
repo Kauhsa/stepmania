@@ -6,12 +6,13 @@
 #include <map>
 #include <vector>
 #include <sstream>
+#include "global.h"
 class RageFileDriver;
 
 /** @brief Safely delete pointers. */
-#define SAFE_DELETE(p)       do { delete (p);     (p)=NULL; } while( false )
+#define SAFE_DELETE(p)       do { delete (p);     (p)=nullptr; } while( false )
 /** @brief Safely delete array pointers. */
-#define SAFE_DELETE_ARRAY(p) do { delete[] (p);   (p)=NULL; } while( false )
+#define SAFE_DELETE_ARRAY(p) do { delete[] (p);   (p)=nullptr; } while( false )
 
 /** @brief Zero out the memory. */
 #define ZERO(x)	memset(&(x), 0, sizeof(x))
@@ -19,6 +20,8 @@ class RageFileDriver;
 #define COPY(a,b) do { ASSERT(sizeof(a)==sizeof(b)); memcpy(&(a), &(b), sizeof(a)); } while( false )
 /** @brief Get the length of the array. */
 #define ARRAYLEN(a) (sizeof(a) / sizeof((a)[0]))
+
+extern const RString CUSTOM_SONG_PATH;
 
 /* Common harmless mismatches.  All min(T,T) and max(T,T) cases are handled
  * by the generic template we get from <algorithm>. */
@@ -28,8 +31,10 @@ inline float max( float a, int b ) { return a > b? a:b; }
 inline float max( int a, float b ) { return a > b? a:b; }
 inline unsigned long min( unsigned int a, unsigned long b ) { return a < b? a:b; }
 inline unsigned long min( unsigned long a, unsigned int b ) { return a < b? a:b; }
+inline unsigned long long min( unsigned int a, unsigned long long b ) { return a < b? a:b; }
 inline unsigned long max( unsigned int a, unsigned long b ) { return a > b? a:b; }
 inline unsigned long max( unsigned long a, unsigned int b ) { return a > b? a:b; }
+inline unsigned long long max( unsigned int a, unsigned long long b ) { return a > b? a:b; }
 
 /** @brief If outside the range from low to high, bring it within range. */
 #define clamp(val,low,high)		( max( (low), min((val),(high)) ) )
@@ -191,7 +196,7 @@ static inline T enum_cycle( T val, int iMax, int iAmt = 1 )
 }
 
 
-/* We only have unsigned swaps; byte swapping a signed value doesn't make sense. 
+/* We only have unsigned swaps; byte swapping a signed value doesn't make sense.
  *
  * Platform-specific, optimized versions are defined in arch_setup, with the names
  * ArchSwap32, ArchSwap24, and ArchSwap16; we define them to their real names here,
@@ -377,6 +382,7 @@ RString ConvertI64FormatString( const RString &sStr );
  * element will end up in Dir, not FName: "c:\games\stepmania\".
  * */
 void splitpath( const RString &Path, RString &Dir, RString &Filename, RString &Ext );
+RString custom_songify_path(RString const& path);
 
 RString SetExtension( const RString &path, const RString &ext );
 RString GetExtension( const RString &sPath );
@@ -401,18 +407,9 @@ void MakeUpper( char *p, size_t iLen );
 void MakeLower( char *p, size_t iLen );
 void MakeUpper( wchar_t *p, size_t iLen );
 void MakeLower( wchar_t *p, size_t iLen );
-/**
- * @brief Have a standard way of converting Strings to integers.
- * @param sString the string to convert.
- * @return the integer we are after. */
-int StringToInt( const RString &sString );
-/**
- * @brief Have a standard way of converting integers to Strings.
- * @param iNum the integer to convert.
- * @return the string we are after. */
-RString IntToString( const int &iNum );
+
+// TODO: Have the three functions below be moved to better locations.
 float StringToFloat( const RString &sString );
-RString FloatToString( const float &num );
 bool StringToFloat( const RString &sString, float &fOut );
 // Better than IntToString because you can check for success.
 template<class T>
@@ -462,7 +459,7 @@ RString GetCwd();
 
 void SetCommandlineArguments( int argc, char **argv );
 void GetCommandLineArguments( int &argc, char **&argv );
-bool GetCommandlineArgument( const RString &option, RString *argument=NULL, int iIndex=0 );
+bool GetCommandlineArgument( const RString &option, RString *argument=nullptr, int iIndex=0 );
 extern int g_argc;
 extern char **g_argv;
 
@@ -485,16 +482,16 @@ float calc_mean( const float *pStart, const float *pEnd );
  * deviation. */
 float calc_stddev( const float *pStart, const float *pEnd, bool bSample = false );
 
-/* 
- * Find the slope, intercept, and error of a linear least squares regression 
+/*
+ * Find the slope, intercept, and error of a linear least squares regression
  * of the points given.  Error is returned as the sqrt of the average squared
- * Y distance from the chosen line. 
- * Returns true on success, false on failure. 
+ * Y distance from the chosen line.
+ * Returns true on success, false on failure.
  */
 bool CalcLeastSquares( const vector< pair<float, float> > &vCoordinates,
                        float &fSlope, float &fIntercept, float &fError );
 
-/* 
+/*
  * This method throws away any points that are more than fCutoff away from
  * the line defined by fSlope and fIntercept.
  */
@@ -598,7 +595,7 @@ struct char_traits_char_nocase: public char_traits<char>
 	{
 		return g_UpperCase[(unsigned char)a];
 	}
-	
+
 	static const char *find( const char* s, int n, char a )
 	{
 		a = fasttoupper(a);
@@ -607,7 +604,7 @@ struct char_traits_char_nocase: public char_traits<char>
 
 		if(fasttoupper(*s) == a)
 			return s;
-		return NULL;
+		return nullptr;
 	}
 };
 typedef basic_string<char,char_traits_char_nocase> istring;
@@ -643,7 +640,7 @@ namespace StringConversion
 
 class RageFileBasic;
 bool FileCopy( const RString &sSrcFile, const RString &sDstFile );
-bool FileCopy( RageFileBasic &in, RageFileBasic &out, RString &sError, bool *bReadError = NULL );
+bool FileCopy( RageFileBasic &in, RageFileBasic &out, RString &sError, bool *bReadError = nullptr );
 
 template<class T>
 void GetAsNotInBs( const vector<T> &as, const vector<T> &bs, vector<T> &difference )

@@ -54,8 +54,7 @@
 #include "InputMapper.h"
 #include "InputQueue.h"
 #include "SongCacheIndex.h"
-#include "BannerCache.h"
-//#include "BackgroundCache.h"
+#include "ImageCache.h"
 #include "UnlockManager.h"
 #include "RageFileManager.h"
 #include "Bookkeeper.h"
@@ -97,7 +96,8 @@ void StepMania::GetPreferredVideoModeParams( VideoModeParams &paramsOut )
 	}
 
 	paramsOut = VideoModeParams(
-		PREFSMAN->m_bWindowed,
+		PREFSMAN->m_bWindowed || PREFSMAN->m_bFullscreenIsBorderlessWindow,
+		PREFSMAN->m_sDisplayId,
 		iWidth,
 		PREFSMAN->m_iDisplayHeight,
 		PREFSMAN->m_iDisplayColorDepth,
@@ -107,6 +107,7 @@ void StepMania::GetPreferredVideoModeParams( VideoModeParams &paramsOut )
 		PREFSMAN->m_bSmoothLines,
 		PREFSMAN->m_bTrilinearFiltering,
 		PREFSMAN->m_bAnisotropicFiltering,
+		!PREFSMAN->m_bWindowed && PREFSMAN->m_bFullscreenIsBorderlessWindow,
 		CommonMetrics::WINDOW_TITLE,
 		THEME->GetPathG("Common","window icon"),
 		PREFSMAN->m_bPAL,
@@ -147,7 +148,13 @@ static void StoreActualGraphicOptions()
 	 * we don't go through the process of auto-detecting a usable video mode
 	 * every time. */
 	const VideoModeParams &params = DISPLAY->GetActualVideoModeParams();
-	PREFSMAN->m_bWindowed.Set( params.windowed );
+	PREFSMAN->m_bWindowed.Set( params.windowed && !params.bWindowIsFullscreenBorderless );
+	if (!params.windowed && !params.bWindowIsFullscreenBorderless) {
+		// In all other cases, want to preserve the value of this preference,
+		// but if DISPLAY decides to go fullscreen exclusive, we'll persist that decision
+		PREFSMAN->m_bFullscreenIsBorderlessWindow.Set( false );
+	}
+
 
 	/* If we're windowed, we may have tweaked the width based on the aspect ratio.
 	 * Don't save this new value over the preferred value. */
@@ -192,7 +199,7 @@ static void update_centering()
 
 static void StartDisplay()
 {
-	if( DISPLAY != NULL )
+	if( DISPLAY != nullptr )
 		return; // already started
 
 	DISPLAY = CreateDisplay();
@@ -271,7 +278,7 @@ void StepMania::ResetPreferences()
 
 /* Shutdown all global singletons. Note that this may be called partway through
  * initialization, due to an object failing to initialize, in which case some of
- * these may still be NULL. */
+ * these may still be nullptr. */
 void ShutdownGame()
 {
 	/* First, tell SOUNDMAN that we're shutting down. This signals sound drivers to
@@ -279,6 +286,14 @@ void ShutdownGame()
 	 * are closed; this prevents annoying DirectSound glitches and delays. */
 	if( SOUNDMAN )
 		SOUNDMAN->Shutdown();
+
+	/* Reset all lights to off.
+	 * This is done before ~LightsManager as some drivers use SCREENMAN
+	 * and similar when setting lights. */
+	if( LIGHTSMAN )
+	{
+		LIGHTSMAN->TurnOffAllLights();
+	}
 
 	SAFE_DELETE( SCREENMAN );
 	SAFE_DELETE( STATSMAN );
@@ -297,8 +312,7 @@ void ShutdownGame()
 	SAFE_DELETE( CRYPTMAN );
 	SAFE_DELETE( MEMCARDMAN );
 	SAFE_DELETE( SONGMAN );
-	SAFE_DELETE( BANNERCACHE );
-	//SAFE_DELETE( BACKGROUNDCACHE );
+	SAFE_DELETE( IMAGECACHE );
 	SAFE_DELETE( SONGINDEX );
 	SAFE_DELETE( SOUND ); // uses GAMESTATE, PREFSMAN
 	SAFE_DELETE( PREFSMAN );
@@ -407,9 +421,7 @@ static void AdjustForChangedSystemCapabilities()
 	/* Preloaded banners takes about 9k per song. Although it's smaller than the
 	 * actual song data, it still adds up with a lot of songs.
 	 * Disable it for 64-meg systems. */
-	PREFSMAN->m_BannerCache.Set( LowMemory ? BNCACHE_OFF:BNCACHE_LOW_RES_PRELOAD );
-	// might wanna do this for backgrounds, too... -aj
-	//PREFSMAN->m_BackgroundCache.Set( LowMemory ? BGCACHE_OFF:BGCACHE_LOW_RES_PRELOAD );
+	PREFSMAN->m_ImageCache.Set( LowMemory ? IMGCACHE_OFF:IMGCACHE_LOW_RES_PRELOAD );
 
 	PREFSMAN->SavePrefsToDisk();
 #endif
@@ -748,7 +760,7 @@ RageDisplay *CreateDisplay()
 	if( asRenderers.empty() )
 		RageException::Throw( "%s", ERROR_NO_VIDEO_RENDERERS.GetValue().c_str() );
 
-	RageDisplay *pRet = NULL;
+	RageDisplay *pRet = nullptr;
 	for( unsigned i=0; i<asRenderers.size(); i++ )
 	{
 		RString sRenderer = asRenderers[i];
@@ -781,7 +793,7 @@ RageDisplay *CreateDisplay()
 			RageException::Throw( ERROR_UNKNOWN_VIDEO_RENDERER.GetValue(), sRenderer.c_str() );
 		}
 
-		if( pRet == NULL )
+		if( pRet == nullptr )
 			continue;
 
 		RString sError = pRet->Init( params, PREFSMAN->m_bAllowUnacceleratedRenderer );
@@ -796,7 +808,7 @@ RageDisplay *CreateDisplay()
 		break; // the display is ready to go
 	}
 
-	if( pRet == NULL)
+	if( pRet == nullptr)
 		RageException::Throw( "%s", error.c_str() );
 
 	return pRet;
@@ -807,7 +819,7 @@ static void SwitchToLastPlayedGame()
 	const Game *pGame = GAMEMAN->StringToGame( PREFSMAN->GetCurrentGame() );
 
 	// If the active game type isn't actually available, revert to the default.
-	if( pGame == NULL )
+	if( pGame == nullptr )
 		pGame = GAMEMAN->GetDefaultGame();
 
 	if( !GAMEMAN->IsGameEnabled( pGame ) && pGame != GAMEMAN->GetDefaultGame() )
@@ -825,10 +837,10 @@ static void SwitchToLastPlayedGame()
 // This function is meant to only be called during start up.
 void StepMania::InitializeCurrentGame( const Game* g )
 {
-	ASSERT( g != NULL );
-	ASSERT( GAMESTATE != NULL );
-	ASSERT( ANNOUNCER != NULL );
-	ASSERT( THEME != NULL );
+	ASSERT( g != nullptr );
+	ASSERT( GAMESTATE != nullptr );
+	ASSERT( ANNOUNCER != nullptr );
+	ASSERT( THEME != nullptr );
 
 	GAMESTATE->SetCurGame( g );
 
@@ -843,7 +855,7 @@ void StepMania::InitializeCurrentGame( const Game* g )
 	if( GetCommandlineArgument( "game", &argCurGame) && argCurGame != sGametype )
 	{
 		Game const* new_game= GAMEMAN->StringToGame(argCurGame);
-		if(new_game == NULL)
+		if(new_game == nullptr)
 		{
 			LOG->Warn("%s is not a known game type, ignoring.", argCurGame.c_str());
 		}
@@ -1042,16 +1054,18 @@ int sm_main(int argc, char* argv[])
 	// This needs PREFSMAN.
 	Dialog::Init();
 
-	// Create game objects
+	// Set up the messaging system early to have well defined code.
+	MESSAGEMAN	= new MessageManager;
 
+	// Create game objects
 	GAMESTATE	= new GameState;
 
 	// This requires PREFSMAN, for PREFSMAN->m_bShowLoadingWindow.
 	LoadingWindow *pLoadingWindow = LoadingWindow::Create();
-	if(pLoadingWindow == NULL)
+	if(pLoadingWindow == nullptr)
 		RageException::Throw("%s", COULDNT_OPEN_LOADING_WINDOW.GetValue().c_str());
 
-	srand( time(NULL) ); // seed number generator
+	srand( time(nullptr) ); // seed number generator
 
 	/* Do this early, so we have debugging output if anything else fails. LOG and
 	 * Dialog must be set up first. It shouldn't take long, but it might take a
@@ -1121,11 +1135,11 @@ int sm_main(int argc, char* argv[])
 		 * theme into the loading window. */
 		RString sError;
 		RageSurface *pSurface = RageSurfaceUtils::LoadFile( THEME->GetPathG( "Common", "window icon" ), sError );
-		if( pSurface != NULL )
+		if( pSurface != nullptr )
 			pLoadingWindow->SetIcon( pSurface );
 		delete pSurface;
 		pSurface = RageSurfaceUtils::LoadFile( THEME->GetPathG("Common","splash"), sError );
-		if( pSurface != NULL )
+		if( pSurface != nullptr )
 			pLoadingWindow->SetSplash( pSurface );
 		delete pSurface;
 	}
@@ -1146,8 +1160,7 @@ int sm_main(int argc, char* argv[])
 
 	INPUTQUEUE	= new InputQueue;
 	SONGINDEX	= new SongCacheIndex;
-	BANNERCACHE	= new BannerCache;
-	//BACKGROUNDCACHE	= new BackgroundCache;
+	IMAGECACHE	= new ImageCache;
 
 	// depends on SONGINDEX:
 	SONGMAN		= new SongManager;
@@ -1163,7 +1176,6 @@ int sm_main(int argc, char* argv[])
 	SONGMAN->UpdatePopular();
 	SONGMAN->UpdatePreferredSort();
 	NSMAN 		= new NetworkSyncManager( pLoadingWindow );
-	MESSAGEMAN	= new MessageManager;
 	STATSMAN	= new StatsManager;
 	SYNCMAN		= new SyncStartManager;
 
@@ -1282,8 +1294,11 @@ void StepMania::InsertCoin( int iNum, bool bCountInBookkeeping )
 	{
 		GAMESTATE->m_iCoins.Set( MAX_NUM_CREDITS * PREFSMAN->m_iCoinsPerCredit );
 	}
-	
+
 	LOG->Trace("%i coins inserted, %i needed to play", GAMESTATE->m_iCoins.Get(), PREFSMAN->m_iCoinsPerCredit.Get() );
+
+    // On InsertCoin, make sure to update Coins file
+    BOOKKEEPER->WriteCoinsFile(GAMESTATE->m_iCoins.Get());
 
 	// If inserting coins, play an appropriate sound; if deducting coins, don't play anything.
 	if (iNum > 0)
@@ -1323,6 +1338,9 @@ void StepMania::ClearCredits()
 	LOG->Trace("%i coins cleared", GAMESTATE->m_iCoins.Get() );
 	GAMESTATE->m_iCoins.Set( 0 );
 	SCREENMAN->PlayInvalidSound();
+
+    // Update Coins file to make sure credits are cleared.
+    BOOKKEEPER->WriteCoinsFile(GAMESTATE->m_iCoins.Get());
 
 	// TODO: remove this redundant message and things that depend on it
 	Message msg( "CoinInserted" );
@@ -1612,8 +1630,8 @@ int LuaFunc_SaveScreenshot(lua_State *L)
 	// If pn is provided, save to that player's profile.
 	// Otherwise, save to the machine.
 	PlayerNumber pn= Enum::Check<PlayerNumber>(L, 1, true);
-	bool compress= lua_toboolean(L, 2);
-	bool sign= lua_toboolean(L, 3);
+	bool compress= lua_toboolean(L, 2) > 0;
+	bool sign= lua_toboolean(L, 3) > 0;
 	RString prefix= luaL_optstring(L, 4, "");
 	RString suffix= luaL_optstring(L, 5, "");
 	RString dir;

@@ -23,7 +23,16 @@ struct FontPageTextures
 	RageTexture *m_pTextureStroke;
 
 	/** @brief Set up the initial textures. */
-	FontPageTextures(): m_pTextureMain(NULL), m_pTextureStroke(NULL) {}
+	FontPageTextures(): m_pTextureMain(nullptr), m_pTextureStroke(nullptr) {}
+
+	bool operator == (const struct FontPageTextures& other) const {
+		return m_pTextureMain == other.m_pTextureMain &&
+			m_pTextureStroke == other.m_pTextureStroke;
+	}
+
+	bool operator != (const struct FontPageTextures& other) const {
+		return !operator==(other);
+	}
 };
 
 /** @brief The components of a glyph (not technically a character). */
@@ -50,7 +59,7 @@ struct glyph
 	RectF m_TexRect;
 	
 	/** @brief Set up the glyph with default values. */
-	glyph() : m_pPage(NULL), m_FontPageTextures(), m_iHadvance(0),
+	glyph() : m_pPage(nullptr), m_FontPageTextures(), m_iHadvance(0),
 		m_fWidth(0), m_fHeight(0), m_fHshift(0), m_TexRect() {}
 };
 
@@ -174,6 +183,7 @@ public:
 	void SetDefaultGlyph( FontPage *pPage );
 
 	bool IsRightToLeft() const { return m_bRightToLeft; };
+	bool IsDistanceField() const { return m_bDistanceField; };
 	const RageColor &GetDefaultStrokeColor() const { return m_DefaultStrokeColor; };
 
 private:
@@ -198,6 +208,8 @@ private:
 	 * This will also change the way glyphs from the default FontPage are rendered. 
 	 * There may be a better way to handle this. */
 	bool m_bRightToLeft;
+	
+	bool m_bDistanceField;
 
 	RageColor m_DefaultStrokeColor;
 

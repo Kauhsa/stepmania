@@ -3,10 +3,16 @@
 #ifndef RAGE_DISPLAY_OGL_H
 #define RAGE_DISPLAY_OGL_H
 
+#ifdef __APPLE__
+#define GL_SILENCE_DEPRECATION 1
+#endif
+
 #include "RageDisplay.h"
+#include "RageTextureRenderTarget.h"
+#include "Sprite.h"
 
 /* Making an OpenGL call doesn't also flush the error state; if we happen
- * to have an error from a previous call, then the assert below will fail. 
+ * to have an error from a previous call, then the assert below will fail.
  * Flush it. */
 #define FlushGLErrors() do { } while( glGetError() != GL_NO_ERROR )
 #define AssertNoGLError() \
@@ -31,7 +37,7 @@ public:
 	virtual RString Init( const VideoModeParams &p, bool bAllowUnacceleratedRenderer );
 
 	virtual RString GetApiDescription() const { return "OpenGL"; }
-	virtual void GetDisplayResolutions( DisplayResolutions &out ) const;
+	virtual void GetDisplaySpecs(DisplaySpecs &out) const;
 	void ResolutionChanged();
 	const RagePixelFormatDesc *GetPixelFormatDesc(RagePixelFormat pf) const;
 
@@ -41,28 +47,29 @@ public:
 	void BeginConcurrentRendering();
 	void EndConcurrentRendering();
 
-	bool BeginFrame();	
+	bool BeginFrame();
 	void EndFrame();
-	VideoModeParams GetActualVideoModeParams() const;
+	ActualVideoModeParams GetActualVideoModeParams() const;
 	void SetBlendMode( BlendMode mode );
 	bool SupportsTextureFormat( RagePixelFormat pixfmt, bool realtime=false );
 	bool SupportsPerVertexMatrixScale();
-	unsigned CreateTexture( 
-		RagePixelFormat pixfmt, 
+	uintptr_t CreateTexture(
+		RagePixelFormat pixfmt,
 		RageSurface* img,
 		bool bGenerateMipMaps );
-	void UpdateTexture( 
-		unsigned iTexHandle, 
+	void UpdateTexture(
+		uintptr_t iTexHandle,
 		RageSurface* img,
-		int xoffset, int yoffset, int width, int height 
+		int xoffset, int yoffset, int width, int height
 		);
-	void DeleteTexture( unsigned iTexHandle );
-	RageSurface *GetTexture( unsigned iTexture );
+	void DeleteTexture( uintptr_t iTexHandle );
+	bool UseOffscreenRenderTarget();
+	RageSurface *GetTexture( uintptr_t iTexture );
 	RageTextureLock *CreateTextureLock();
 
 	void ClearAllTextures();
 	int GetNumTextureUnits();
-	void SetTexture( TextureUnit tu, unsigned iTexture );
+	void SetTexture( TextureUnit tu, uintptr_t iTexture );
 	void SetTextureMode( TextureUnit tu, TextureMode tm );
 	void SetTextureWrapping( TextureUnit tu, bool b );
 	int GetMaxTextureSize() const;
@@ -70,9 +77,10 @@ public:
 	void SetEffectMode( EffectMode effect );
 	bool IsEffectModeSupported( EffectMode effect );
 	bool SupportsRenderToTexture() const;
-	unsigned CreateRenderTarget( const RenderTargetParam &param, int &iTextureWidthOut, int &iTextureHeightOut );
-	unsigned GetRenderTarget();
-	void SetRenderTarget( unsigned iHandle, bool bPreserveTexture );
+	bool SupportsFullscreenBorderlessWindow() const;
+	uintptr_t CreateRenderTarget( const RenderTargetParam &param, int &iTextureWidthOut, int &iTextureHeightOut );
+	uintptr_t GetRenderTarget();
+	void SetRenderTarget( uintptr_t iHandle, bool bPreserveTexture );
 	bool IsZWriteEnabled() const;
 	bool IsZTestEnabled() const;
 	void SetZWrite( bool b );
@@ -81,7 +89,7 @@ public:
 	void ClearZBuffer();
 	void SetCullMode( CullMode mode );
 	void SetAlphaTest( bool b );
-	void SetMaterial( 
+	void SetMaterial(
 		const RageColor &emissive,
 		const RageColor &ambient,
 		const RageColor &diffuse,
@@ -125,6 +133,9 @@ protected:
 	bool SupportsSurfaceFormat( RagePixelFormat pixfmt );
 	
 	void SendCurrentMatrices();
+
+private:
+	RageTextureRenderTarget *offscreenRenderTarget;
 };
 
 #endif

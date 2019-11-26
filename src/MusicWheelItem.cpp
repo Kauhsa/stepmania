@@ -75,7 +75,7 @@ MusicWheelItem::MusicWheelItem( RString sType ):
 
 	FOREACH_ENUM( MusicWheelItemType, i )
 	{
-		m_pText[i] = NULL;
+		m_pText[i] = nullptr;
 
 		// Don't init text for Type_Song. It uses a TextBanner.
 		if( i == MusicWheelItemType_Song )
@@ -145,9 +145,9 @@ MusicWheelItem::MusicWheelItem( const MusicWheelItem &cpy ):
 
 	FOREACH_ENUM( MusicWheelItemType, i )
 	{
-		if( cpy.m_pText[i] == NULL )
+		if( cpy.m_pText[i] == nullptr )
 		{
-			m_pText[i] = NULL;
+			m_pText[i] = nullptr;
 		}
 		else
 		{
@@ -305,15 +305,16 @@ void MusicWheelItem::LoadFromWheelItemData( const WheelItemBaseData *pData, int 
 
 void MusicWheelItem::RefreshGrades()
 {
+	if(!IsLoaded()) { return; }
 	const MusicWheelItemData *pWID = dynamic_cast<const MusicWheelItemData*>( m_pData );
 
-	if( pWID == NULL )
+	if( pWID == nullptr )
 		return; // LoadFromWheelItemData() hasn't been called yet.
 	FOREACH_HumanPlayer( p )
 	{
 		m_pGradeDisplay[p]->SetVisible( false );
 
-		if( pWID->m_pSong == NULL && pWID->m_pCourse == NULL )
+		if( pWID->m_pSong == nullptr && pWID->m_pCourse == nullptr )
 			continue;
 
 		Difficulty dc;
@@ -345,19 +346,19 @@ void MusicWheelItem::RefreshGrades()
 
 		Profile *pProfile = PROFILEMAN->GetProfile(ps);
 
-		HighScoreList *pHSL = NULL;
+		HighScoreList *pHSL = nullptr;
 		if( PROFILEMAN->IsPersistentProfile(ps) && dc != Difficulty_Invalid )
 		{
 			if( pWID->m_pSong )
 			{
 				const Steps* pSteps = SongUtil::GetStepsByDifficulty( pWID->m_pSong, st, dc );
-				if( pSteps != NULL )
+				if( pSteps != nullptr )
 					pHSL = &pProfile->GetStepsHighScoreList(pWID->m_pSong, pSteps);
 			}
 			else if( pWID->m_pCourse )
 			{
 				const Trail *pTrail = pWID->m_pCourse->GetTrail( st, dc );
-				if( pTrail != NULL )
+				if( pTrail != nullptr )
 					pHSL = &pProfile->GetCourseHighScoreList( pWID->m_pCourse, pTrail );
 			}
 		}
@@ -375,6 +376,7 @@ void MusicWheelItem::RefreshGrades()
 
 void MusicWheelItem::HandleMessage( const Message &msg )
 {
+	if(!IsLoaded()) { return; }
 	if( msg == Message_CurrentStepsP1Changed ||
 	    msg == Message_CurrentStepsP2Changed ||
 	    msg == Message_CurrentTrailP1Changed ||
@@ -382,6 +384,53 @@ void MusicWheelItem::HandleMessage( const Message &msg )
 	    msg == Message_PreferredDifficultyP1Changed ||
 	    msg == Message_PreferredDifficultyP2Changed )
 	{
+		const MusicWheelItemData *pWID = dynamic_cast<const MusicWheelItemData*>( m_pData );
+		MusicWheelItemType type = MusicWheelItemType_Invalid;
+
+		switch( pWID->m_Type )
+		{
+			DEFAULT_FAIL( pWID->m_Type );
+			case WheelItemDataType_Song:
+				type = MusicWheelItemType_Song;
+				break;
+			case WheelItemDataType_Section:
+				if( GAMESTATE->sExpandedSectionName == pWID->m_sText )
+					type = MusicWheelItemType_SectionExpanded;
+				else
+					type = MusicWheelItemType_SectionCollapsed;
+				break;
+			case WheelItemDataType_Course:
+				type = MusicWheelItemType_Course;
+				break;
+			case WheelItemDataType_Sort:
+				if( pWID->m_pAction->m_pm != PlayMode_Invalid )
+					type = MusicWheelItemType_Mode;
+				else
+					type = MusicWheelItemType_Sort;
+				break;
+			case WheelItemDataType_Roulette:
+				type = MusicWheelItemType_Roulette;
+				break;
+			case WheelItemDataType_Random:
+				type = MusicWheelItemType_Random;
+				break;
+			case WheelItemDataType_Portal:
+				type = MusicWheelItemType_Portal;
+				break;
+			case WheelItemDataType_Custom:
+				type = MusicWheelItemType_Custom;
+				break;
+		}
+
+		Message msg( "Set" );
+		msg.SetParam( "Song", pWID->m_pSong );
+		msg.SetParam( "Course", pWID->m_pCourse );
+		msg.SetParam( "Text", pWID->m_sText );
+		msg.SetParam( "Type", MusicWheelItemTypeToString(type) );
+		msg.SetParam( "Color", pWID->m_color );
+		msg.SetParam( "Label", pWID->m_sLabel );
+		this->HandleMessage( msg );
+		
 		RefreshGrades();
 	}
 

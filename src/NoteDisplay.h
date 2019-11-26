@@ -36,6 +36,7 @@ enum NoteColorType
 {
 	NoteColorType_Denominator, /**< Color by note type. */
 	NoteColorType_Progress, /**< Color by progress. */
+	NoteColorType_ProgressAlternate, /**< Color by progress, except the frame boundaries are slightly later. */
 	NUM_NoteColorType,
 	NoteColorType_Invalid
 };
@@ -157,7 +158,7 @@ struct NoteColumnRenderArgs
 		float beat, float y_offset, float y_reverse_offset,
 		RageVector3& sp_pos, RageVector3& ae_pos) const;
 	void spae_zoom_for_beat(const PlayerState* state, float beat,
-		RageVector3& sp_zoom, RageVector3& ae_zoom) const;
+		RageVector3& sp_zoom, RageVector3& ae_zoom, int col_num, float y_offset) const;
 	void SetPRZForActor(Actor* actor,
 		const RageVector3& sp_pos, const RageVector3& ae_pos,
 		const RageVector3& sp_rot, const RageVector3& ae_rot,

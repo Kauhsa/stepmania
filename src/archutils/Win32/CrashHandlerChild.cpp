@@ -36,22 +36,28 @@
 // XXX: What happens when we *don't* have version info? Does that ever actually happen?
 #include "ver.h"
 
+#if _WIN64
+#define ADDRESS_ZEROS "016"
+#else
+#define ADDRESS_ZEROS "08"
+#endif
+
 // VDI symbol lookup:
 namespace VDDebugInfo
 {
 	struct Context
 	{
-		Context() { pRVAHeap=NULL; }
-		bool Loaded() const { return pRVAHeap != NULL; }
+		Context() { pRVAHeap=nullptr; }
+		bool Loaded() const { return pRVAHeap != nullptr; }
 		RString sRawBlock;
 
 		int nBuildNumber;
 
 		const unsigned char *pRVAHeap;
-		unsigned nFirstRVA;
+		uintptr_t nFirstRVA;
 
 		const char *pFuncNameHeap;
-		const unsigned long (*pSegments)[2];
+		const uintptr_t (*pSegments)[2];
 		int nSegments;
 		char sFilename[1024];
 		RString sError;
@@ -59,7 +65,7 @@ namespace VDDebugInfo
 
 	static void GetVDIPath( char *buf, int bufsiz )
 	{
-		GetModuleFileName( NULL, buf, bufsiz );
+		GetModuleFileName( nullptr, buf, bufsiz );
 		buf[bufsiz-5] = 0;
 		char *p = strrchr( buf, '.' );
 		if( p )
@@ -86,7 +92,7 @@ namespace VDDebugInfo
 
 		const unsigned char *src = (const unsigned char *) pctx->sRawBlock.data();
 
-		pctx->pRVAHeap = NULL;
+		pctx->pRVAHeap = nullptr;
 
 		static const char *header = "symbolic debug information";
 		if( memcmp(src, header, strlen(header)) )
@@ -98,13 +104,18 @@ namespace VDDebugInfo
 		// Extract fields
 
 		src += 64;
+		const int* pVer = reinterpret_cast<const int*>(src);
+		const size_t* pRVASize = reinterpret_cast<const size_t*>(src + sizeof(int));
+		const size_t* pFNamSize = reinterpret_cast<const size_t*>(src + sizeof(int) + sizeof(size_t));
+		const int* pSegCnt = reinterpret_cast<const int*>(src + sizeof(int) + 2 * sizeof(size_t));
+		src += 2 * (sizeof(int) + sizeof(size_t));
 
-		pctx->nBuildNumber		= *(int *)src;
-		pctx->pRVAHeap			= (const unsigned char *)(src + 20);
-		pctx->nFirstRVA			= *(const long *)(src + 16);
-		pctx->pFuncNameHeap		= (const char *)pctx->pRVAHeap - 4 + *(const long *)(src + 4);
-		pctx->pSegments			= (unsigned long (*)[2])(pctx->pFuncNameHeap + *(const long *)(src + 8));
-		pctx->nSegments			= *(const long *)(src + 12);
+		pctx->nBuildNumber		= *pVer;
+		pctx->pRVAHeap			= reinterpret_cast<const unsigned char*>(src + sizeof(uintptr_t));
+		pctx->nFirstRVA			= *reinterpret_cast<const uintptr_t*>(src);
+		pctx->pFuncNameHeap		= reinterpret_cast<const char*>(src + *pRVASize);
+		pctx->pSegments			= reinterpret_cast<const uintptr_t(*)[2]>(src + *pRVASize + *pFNamSize);
+		pctx->nSegments			= *pSegCnt;
 
 		return true;
 	}
@@ -121,11 +132,11 @@ namespace VDDebugInfo
 			return true;
 
 		pctx->sRawBlock = RString();
-		pctx->pRVAHeap = NULL;
+		pctx->pRVAHeap = nullptr;
 		GetVDIPath( pctx->sFilename, ARRAYLEN(pctx->sFilename) );
 		pctx->sError = RString();
 
-		HANDLE h = CreateFile( pctx->sFilename, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
+		HANDLE h = CreateFile( pctx->sFilename, GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr );
 		if( h == INVALID_HANDLE_VALUE )
 		{
 			pctx->sError = werr_ssprintf( GetLastError(), "CreateFile failed" );
@@ -133,15 +144,15 @@ namespace VDDebugInfo
 		}
 
 		do {
-			DWORD dwFileSize = GetFileSize( h, NULL );
+			DWORD dwFileSize = GetFileSize( h, nullptr );
 			if( dwFileSize == INVALID_FILE_SIZE )
 				break;
 
-			char *buffer = new char[dwFileSize + 1];
+			char *buffer = new char[static_cast<size_t>(dwFileSize) + 1];
 			std::fill(buffer, buffer + dwFileSize + 1, '\0' );
 
 			DWORD dwActual;
-			int iRet = ReadFile(h, buffer, dwFileSize, &dwActual, NULL);
+			int iRet = ReadFile(h, buffer, dwFileSize, &dwActual, nullptr);
 			CloseHandle(h);
 			pctx->sRawBlock = buffer;
 			delete[] buffer;
@@ -157,7 +168,7 @@ namespace VDDebugInfo
 		return false;
 	}
 
-	static bool PointerIsInAnySegment( const Context *pctx, unsigned rva )
+	static bool PointerIsInAnySegment( const Context *pctx, uintptr_t rva )
 	{
 		for( int i=0; i<pctx->nSegments; ++i )
 		{
@@ -168,7 +179,7 @@ namespace VDDebugInfo
 		return false;
 	}
 
-	static const char *GetNameFromHeap(const char *heap, int idx)
+	static const char *GetNameFromHeap(const char *heap, size_t idx)
 	{
 		while(idx--)
 			while(*heap++);
@@ -176,25 +187,25 @@ namespace VDDebugInfo
 		return heap;
 	}
 
-	long VDDebugInfoLookupRVA( const Context *pctx, unsigned rva, char *buf, int buflen )
+	intptr_t VDDebugInfoLookupRVA( const Context *pctx, uintptr_t rva, char *buf, int buflen )
 	{
 		if( !PointerIsInAnySegment(pctx, rva) )
 			return -1;
 
 		const unsigned char *pr = pctx->pRVAHeap;
 		const unsigned char *pr_limit = (const unsigned char *)pctx->pFuncNameHeap;
-		int idx = 0;
+		size_t idx = 0;
 
 		// Linearly unpack RVA deltas and find lower_bound
 		rva -= pctx->nFirstRVA;
 
-		if( (signed)rva < 0 )
+		if( static_cast<intptr_t>(rva) < 0 )
 			return -1;
 
 		while( pr < pr_limit )
 		{
 			unsigned char c;
-			unsigned diff = 0;
+			uintptr_t diff = 0;
 
 			do
 			{
@@ -205,7 +216,7 @@ namespace VDDebugInfo
 
 			rva -= diff;
 
-			if ((signed)rva < 0) {
+			if (static_cast<intptr_t>(rva) < 0) {
 				rva += diff;
 				break;
 			}
@@ -224,7 +235,7 @@ namespace VDDebugInfo
 		strncpy( buf, fn_name, buflen );
 		buf[buflen-1] = 0;
 
-		return rva;
+		return static_cast<intptr_t>(rva);
 	}
 }
 
@@ -234,7 +245,7 @@ bool ReadFromParent( int fd, void *p, int size )
 	int got = 0;
 	while( got < size )
 	{
-		int ret = read( fd, buf+got, size-got );
+		int ret = _read( fd, buf+got, size-got );
 		if( ret == -1 )
 		{
 			if( errno == EINTR )
@@ -268,7 +279,7 @@ namespace SymbolLookup
 		{
 			SymSetOptions( SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS );
 
-			if( !SymInitialize(g_hParent, NULL, TRUE) )
+			if( !SymInitialize(g_hParent, nullptr, TRUE) )
 				return false;
 
 			bInitted = true;
@@ -277,7 +288,7 @@ namespace SymbolLookup
 		return true;
 	}
 
-	SYMBOL_INFO *GetSym( unsigned long ptr, DWORD64 &disp )
+	SYMBOL_INFO *GetSym( uintptr_t ptr, DWORD64 &disp )
 	{
 		InitDbghelp();
 
@@ -288,7 +299,7 @@ namespace SymbolLookup
 		pSymbol->MaxNameLen = sizeof(buffer) - sizeof(SYMBOL_INFO) + 1;
 
 		if( !SymFromAddr(g_hParent, ptr, &disp, pSymbol) )
-			return NULL;
+			return nullptr;
 
 		return pSymbol;
 	}
@@ -322,16 +333,16 @@ namespace SymbolLookup
 
 	RString CrashChildGetModuleBaseName( HMODULE hMod )
 	{
-		write( _fileno(stdout), &hMod,  sizeof(hMod) );
+		_write( _fileno(stdout), &hMod,  sizeof(hMod) );
 
-		int iFD = fileno(stdin);
+		int iFD = _fileno(stdin);
 		int iSize;
 		if (!ReadFromParent(iFD, &iSize, sizeof(iSize)))
 		{
 			return "???";
 		}
 		RString sName;
-		char *buffer = new char[iSize + 1];
+		char *buffer = new char[static_cast<size_t>(iSize) + 1];
 		std::fill(buffer, buffer + iSize + 1, '\0');
 		if (!ReadFromParent(iFD, buffer, iSize))
 		{
@@ -357,12 +368,12 @@ namespace SymbolLookup
 		VirtualQueryEx( g_hParent, ptr, &meminfo, sizeof meminfo );
 
 		char tmp[512];
-		long iAddress = VDDebugInfo::VDDebugInfoLookupRVA(pctx, (unsigned int)ptr, tmp, sizeof(tmp));
+		intptr_t iAddress = VDDebugInfo::VDDebugInfoLookupRVA(pctx, reinterpret_cast<uintptr_t>(ptr), tmp, sizeof(tmp));
 		if( iAddress >= 0 )
 		{
-			wsprintf( buf, "%08x: %s [%08lx+%lx+%lx]", ptr, Demangle(tmp),
+			wsprintf( buf, "%" ADDRESS_ZEROS "Ix: %s [%" ADDRESS_ZEROS "Ix+%Ix+%Ix]", reinterpret_cast<uintptr_t>(ptr), Demangle(tmp),
 				pctx->nFirstRVA,
-				((unsigned int) ptr) - pctx->nFirstRVA - iAddress,
+				reinterpret_cast<uintptr_t>(ptr) - pctx->nFirstRVA - iAddress,
 				iAddress );
 			return;
 		}
@@ -370,21 +381,21 @@ namespace SymbolLookup
 		RString sName = CrashChildGetModuleBaseName( (HMODULE)meminfo.AllocationBase );
 
 		DWORD64 disp;
-		SYMBOL_INFO *pSymbol = GetSym( (unsigned int)ptr, disp );
+		SYMBOL_INFO *pSymbol = GetSym( reinterpret_cast<uintptr_t>(ptr), disp );
 
 		if( pSymbol )
 		{
-			wsprintf( buf, "%08lx: %s!%s [%08lx+%lx+%lx]",
-				(unsigned long) ptr, sName.c_str(), pSymbol->Name,
-				(unsigned long) meminfo.AllocationBase,
-				(unsigned long) (pSymbol->Address) - (unsigned long) (meminfo.AllocationBase),
-				(unsigned long) disp);
+			wsprintf( buf, "%" ADDRESS_ZEROS "Ix: %s!%s [%" ADDRESS_ZEROS "Ix+%Ix+%Ix]",
+				reinterpret_cast<uintptr_t>(ptr), sName.c_str(), pSymbol->Name,
+				reinterpret_cast<uintptr_t>(meminfo.AllocationBase),
+				static_cast<uintptr_t>(pSymbol->Address) - reinterpret_cast<uintptr_t>(meminfo.AllocationBase),
+				static_cast<ULONG_PTR>(disp));
 			return;
 		}
 
-		wsprintf( buf, "%08lx: %s!%08lx",
-			(unsigned long) ptr, sName.c_str(), 
-			(unsigned long) meminfo.AllocationBase );
+		wsprintf( buf, "%" ADDRESS_ZEROS "Ix: %s!%" ADDRESS_ZEROS "Ix",
+			reinterpret_cast<uintptr_t>(ptr), sName.c_str(), 
+			reinterpret_cast<uintptr_t>(meminfo.AllocationBase) );
 	}
 }
 
@@ -394,7 +405,7 @@ namespace
 RString SpliceProgramPath( RString fn )
 {
 	char szBuf[MAX_PATH];
-	GetModuleFileName( NULL, szBuf, sizeof(szBuf) );
+	GetModuleFileName( nullptr, szBuf, sizeof(szBuf) );
 
 	char szModName[MAX_PATH];
 	char *pszFile;
@@ -491,7 +502,7 @@ static void DoSave( const RString &sReport )
 
 	SetFileAttributes( sName, FILE_ATTRIBUTE_NORMAL );
 	FILE *pFile = fopen( sName, "w+" );
-	if( pFile == NULL )
+	if( pFile == nullptr )
 		return;
 	fprintf( pFile, "%s", sReport.c_str() );
 
@@ -518,7 +529,7 @@ bool ReadCrashDataFromParent( int iFD, CompleteCrashData &Data )
 	if( !ReadFromParent(iFD, &iSize, sizeof(iSize)) )
 		return false;
 
-	char *buffer = new char[iSize + 1];
+	char *buffer = new char[static_cast<size_t>(iSize) + 1];
 	std::fill(buffer, buffer + iSize + 1, '\0');
 	bool wasReadSuccessful = ReadFromParent(iFD, buffer, iSize);
 	RString tmp = buffer;
@@ -643,7 +654,7 @@ public:
 	~CrashDialog();
 
 protected:
-	virtual BOOL HandleMessage( UINT msg, WPARAM wParam, LPARAM lParam );
+	virtual INT_PTR HandleMessage( UINT msg, WPARAM wParam, LPARAM lParam );
 
 private:
 	void SetDialogInitial();
@@ -659,7 +670,7 @@ CrashDialog::CrashDialog( const RString &sCrashReport, const CompleteCrashData &
 	m_CrashData( CrashData )
 {
 	LoadLocalizedStrings();
-	m_pPost = NULL;
+	m_pPost = nullptr;
 }
 
 CrashDialog::~CrashDialog()
@@ -677,7 +688,7 @@ void CrashDialog::SetDialogInitial()
 	ShowWindow( GetDlgItem(hDlg, IDC_BUTTON_AUTO_REPORT), true );
 }
 
-BOOL CrashDialog::HandleMessage( UINT msg, WPARAM wParam, LPARAM lParam )
+INT_PTR CrashDialog::HandleMessage( UINT msg, WPARAM wParam, LPARAM lParam )
 {
 	HWND hDlg = GetHwnd();
 
@@ -692,7 +703,7 @@ BOOL CrashDialog::HandleMessage( UINT msg, WPARAM wParam, LPARAM lParam )
 		{
 			HDC hdc = (HDC)wParam;
 			HWND hwndStatic = (HWND)lParam;
-			HBRUSH hbr = NULL;
+			HBRUSH hbr = nullptr;
 
 			// TODO: Change any attributes of the DC here
 			switch( GetDlgCtrlID(hwndStatic) )
@@ -706,14 +717,14 @@ BOOL CrashDialog::HandleMessage( UINT msg, WPARAM wParam, LPARAM lParam )
 			}
 
 			// TODO: Return a different brush if the default is not desired
-			return (BOOL)hbr;
+			return reinterpret_cast<INT_PTR>(hbr);
 		}
 
 	case WM_COMMAND:
 		switch(LOWORD(wParam))
 		{
 		case IDC_BUTTON_CLOSE:
-			if( m_pPost != NULL )
+			if( m_pPost != nullptr )
 			{
 				// Cancel reporting, and revert the dialog as if "report" had not been pressed.
 				m_pPost->Cancel();
@@ -734,7 +745,7 @@ BOOL CrashDialog::HandleMessage( UINT msg, WPARAM wParam, LPARAM lParam )
 			{
 				RString sLogPath;
 				FILE *pFile = fopen( SpliceProgramPath("../Portable.ini"), "r" );
-				if(pFile != NULL)
+				if(pFile != nullptr)
 				{
 					sLogPath = SpliceProgramPath("../Logs/log.txt");
 					fclose( pFile );
@@ -742,11 +753,11 @@ BOOL CrashDialog::HandleMessage( UINT msg, WPARAM wParam, LPARAM lParam )
 				else
 					sLogPath = SpecialDirs::GetAppDataDir() + PRODUCT_ID +"/Logs/log.txt";
 
-				ShellExecute( NULL, "open", sLogPath, "", "", SW_SHOWNORMAL );
+				ShellExecute( nullptr, "open", sLogPath, "", "", SW_SHOWNORMAL );
 			}
 			break;
 		case IDC_CRASH_SAVE:
-			ShellExecute( NULL, "open", SpliceProgramPath("../crashinfo.txt"), "", "", SW_SHOWNORMAL );
+			ShellExecute( nullptr, "open", SpliceProgramPath("../crashinfo.txt"), "", "", SW_SHOWNORMAL );
 			return TRUE;
 		case IDC_BUTTON_RESTART:
 			Win32RestartProgram();
@@ -781,13 +792,13 @@ BOOL CrashDialog::HandleMessage( UINT msg, WPARAM wParam, LPARAM lParam )
 
 			m_pPost->Start( CRASH_REPORT_HOST, CRASH_REPORT_PORT, CRASH_REPORT_PATH );
 
-			SetTimer( hDlg, 0, 100, NULL );
+			SetTimer( hDlg, 0, 100, nullptr );
 			break;
 		}
 		break;
 	case WM_TIMER:
 		{
-			if( m_pPost == NULL )
+			if( m_pPost == nullptr )
 				break;
 
 			float fProgress = m_pPost->GetProgress();
@@ -861,7 +872,7 @@ void ChildProcess()
 {
 	// Read the crash data from the crashed parent.
 	CompleteCrashData Data;
-	ReadCrashDataFromParent( fileno(stdin), Data );
+	ReadCrashDataFromParent( _fileno(stdin), Data );
 
 	RString sCrashReport;
 	VDDebugInfo::VDDebugInfoInitFromFile( &g_debugInfo );
@@ -875,7 +886,7 @@ void ChildProcess()
 
 	// Now that we've done that, the process is gone. Don't use g_hParent.
 	CloseHandle( SymbolLookup::g_hParent );
-	SymbolLookup::g_hParent = NULL;
+	SymbolLookup::g_hParent = nullptr;
 
 	CrashDialog cd( sCrashReport, Data );
 #if defined(AUTOMATED_CRASH_REPORTS)

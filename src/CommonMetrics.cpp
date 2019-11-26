@@ -1,7 +1,7 @@
 #include "global.h"
 #include "CommonMetrics.h"
 #include "RageUtil.h"
-#include "Foreach.h"
+
 #include "GameManager.h"
 #include "RageLog.h"
 #include "GameState.h"
@@ -20,6 +20,7 @@ ThemeMetricCourseDifficultiesToShow	CommonMetrics::COURSE_DIFFICULTIES_TO_SHOW	(
 ThemeMetricStepsTypesToShow	CommonMetrics::STEPS_TYPES_TO_SHOW		("Common","StepsTypesToHide");
 ThemeMetric<bool>			CommonMetrics::AUTO_SET_STYLE			("Common","AutoSetStyle");
 ThemeMetric<int>			CommonMetrics::PERCENT_SCORE_DECIMAL_PLACES	("Common","PercentScoreDecimalPlaces");
+ThemeMetric<RString>		CommonMetrics::IMAGES_TO_CACHE	("Common","ImageCache");
 
 ThemeMetricDifficultiesToShow::ThemeMetricDifficultiesToShow( const RString& sGroup, const RString& sName ) : 
 	ThemeMetric<RString>(sGroup,sName)
@@ -44,12 +45,12 @@ void ThemeMetricDifficultiesToShow::Read()
 		return;
 	}
 
-	FOREACH_CONST( RString, v, i )
+	for (RString const &i : v)
 	{
-		Difficulty d = StringToDifficulty( *i );
+		Difficulty d = StringToDifficulty( i );
 		if( d == Difficulty_Invalid )
 		{
-			LuaHelpers::ReportScriptErrorFmt("Unknown difficulty \"%s\" in CourseDifficultiesToShow.", i->c_str());
+			LuaHelpers::ReportScriptErrorFmt("Unknown difficulty \"%s\" in CourseDifficultiesToShow.", i.c_str());
 		}
 		else
 		{
@@ -83,12 +84,12 @@ void ThemeMetricCourseDifficultiesToShow::Read()
 		return;
 	}
 
-	FOREACH_CONST( RString, v, i )
+	for (RString const &i : v)
 	{
-		CourseDifficulty d = StringToDifficulty( *i );
+		CourseDifficulty d = StringToDifficulty( i );
 		if( d == Difficulty_Invalid )
 		{
-			LuaHelpers::ReportScriptErrorFmt("Unknown CourseDifficulty \"%s\" in CourseDifficultiesToShow.", i->c_str());
+			LuaHelpers::ReportScriptErrorFmt("Unknown CourseDifficulty \"%s\" in CourseDifficultiesToShow.", i.c_str());
 		}
 		else
 		{
@@ -105,12 +106,12 @@ static void RemoveStepsTypes( vector<StepsType>& inout, RString sStepsTypesToRem
 	if( v.size() == 0 ) return; // Nothing to do!
 
 	// subtract StepsTypes
-	FOREACH_CONST( RString, v, i )
+	for (RString const &i : v)
 	{
-		StepsType st = GAMEMAN->StringToStepsType(*i);
+		StepsType st = GAMEMAN->StringToStepsType(i);
 		if( st == StepsType_Invalid )
 		{
-			LuaHelpers::ReportScriptErrorFmt( "Invalid StepsType value '%s' in '%s'", i->c_str(), sStepsTypesToRemove.c_str() );
+			LuaHelpers::ReportScriptErrorFmt( "Invalid StepsType value '%s' in '%s'", i.c_str(), sStepsTypesToRemove.c_str() );
 			continue;
 		}
 

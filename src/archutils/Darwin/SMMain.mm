@@ -7,6 +7,7 @@
 #import <Cocoa/Cocoa.h>
 #include "ProductInfo.h"
 #include "arch/ArchHooks/ArchHooks.h"
+#include "StepMania.h"
 
 @interface NSApplication (PrivateShutUpWarning)
 - (void) setAppleMenu:(NSMenu *)menu;
@@ -23,7 +24,8 @@
 @implementation SMApplication
 - (void)fullscreen:(id)sender
 {
-	ArchHooks::SetToggleWindowed();
+	// don't use ArchHooks::SetToggleWindowed(), it makes the screen black
+	[[self mainWindow] toggleFullScreen:nil];
 }
 
 - (void)sendEvent:(NSEvent *)event
@@ -54,7 +56,7 @@
 
 - (id) initWithArgc:(int)argc argv:(char **)argv
 {
-	[super init];
+	self = [super init];
 	if( argc == 2 && !strncmp(argv[1], "-psn_", 5) )
 		argc = 1;
 	m_iArgc = argc;
@@ -189,8 +191,8 @@ static void SetupMenus( void )
 	[item setKeyEquivalentModifierMask:NSAlternateKeyMask]; // opt-enter
 	[windowMenu addItem:item];
 
-	[[mainMenu addItemWithTitle:[appMenu title] action:NULL keyEquivalent:@""] setSubmenu:appMenu];
-	[[mainMenu addItemWithTitle:[windowMenu title] action:NULL keyEquivalent:@""] setSubmenu:windowMenu];
+	[[mainMenu addItemWithTitle:[appMenu title] action:nil keyEquivalent:@""] setSubmenu:appMenu];
+	[[mainMenu addItemWithTitle:[windowMenu title] action:nil keyEquivalent:@""] setSubmenu:windowMenu];
 
 	[NSApp setMainMenu:mainMenu];
 	[NSApp setAppleMenu:appMenu]; // This isn't the apple menu, but it doesn't work without this.
@@ -216,7 +218,7 @@ int main( int argc, char **argv )
 
 	// Create SMMain and make it the app delegate.
 	sm = [[SMMain alloc] initWithArgc:argc argv:argv];
-	[NSApp setDelegate:sm];
+	[NSApp setDelegate:static_cast<id<NSApplicationDelegate>>(sm)];
 
 	[pool release];
 	// Start the main event loop.

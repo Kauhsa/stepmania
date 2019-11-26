@@ -8,11 +8,8 @@
 
 #if defined(_MSC_VER)
 #pragma comment(lib, "dinput8.lib")
-#if defined(_WINDOWS)
-#pragma comment(lib, "dxguid.lib")
 #endif
-#endif
-LPDIRECTINPUT8 g_dinput = NULL;
+LPDIRECTINPUT8 g_dinput = nullptr;
 
 static int ConvertScancodeToKey( int scancode );
 static BOOL CALLBACK DIJoystick_EnumDevObjectsProc(LPCDIDEVICEOBJECTINSTANCE dev, LPVOID data);
@@ -24,7 +21,7 @@ DIDevice::DIDevice()
 	dev = InputDevice_Invalid;
 	buffered = true;
 	memset(&JoystickInst, 0, sizeof(JoystickInst));
-	Device = NULL;
+	Device = nullptr;
 }
 
 bool DIDevice::Open()
@@ -37,7 +34,7 @@ bool DIDevice::Open()
 	LPDIRECTINPUTDEVICE8 tmpdevice;
 
 	// load joystick
-	HRESULT hr = g_dinput->CreateDevice( JoystickInst.guidInstance, &tmpdevice, NULL );
+	HRESULT hr = g_dinput->CreateDevice( JoystickInst.guidInstance, &tmpdevice, nullptr );
 	if ( hr != DI_OK )
 	{
 		LOG->Info( hr_ssprintf(hr, "OpenDevice: IDirectInput_CreateDevice") );
@@ -131,12 +128,12 @@ bool DIDevice::Open()
 void DIDevice::Close()
 {
 	// Don't try to close a device that isn't open.
-	ASSERT( Device != NULL );
+	ASSERT( Device != nullptr );
 
 	Device->Unacquire();
 	Device->Release();
 
-	Device = NULL;
+	Device = nullptr;
 	buttons = axes = hats = 0;
 	Inputs.clear();
 }
@@ -399,6 +396,11 @@ static BOOL CALLBACK DIMouse_EnumDevObjectsProc(LPCDIDEVICEOBJECTINSTANCE dev, L
 	device->Inputs.push_back(in);
 
 	return DIENUM_CONTINUE;
+}
+
+XIDevice::XIDevice()
+{
+	dev = InputDevice_Invalid;
 }
 
 /*

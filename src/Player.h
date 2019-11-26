@@ -117,12 +117,18 @@ public:
 	static float GetMaxStepDistanceSeconds();
 	static float GetWindowSeconds( TimingWindow tw );
 	const NoteData &GetNoteData() const { return m_NoteData; }
-	bool HasVisibleParts() const { return m_pNoteField != NULL; }
+	bool HasVisibleParts() const { return m_pNoteField != nullptr; }
 
 	void SetActorWithJudgmentPosition( Actor *pActor ) { m_pActorWithJudgmentPosition = pActor; }
 	void SetActorWithComboPosition( Actor *pActor ) { m_pActorWithComboPosition = pActor; }
 
 	void SetSendJudgmentAndComboMessages( bool b ) { m_bSendJudgmentAndComboMessages = b; }
+
+	// OITG bug:  Actor::SetZoom only sets X and Y.  When mini is applied to
+	// the notefield with SetZoom, it does not affect the range of bumpy.
+	// m_oitg_zoom_mode provides compatibility with that bug.  Only used in
+	// defective mode. -Kyz
+	bool m_oitg_zoom_mode;
 
 	// Lua
 	virtual void PushSelf( lua_State *L );

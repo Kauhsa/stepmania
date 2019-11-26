@@ -3,28 +3,28 @@
 
 WindowsDialogBox::WindowsDialogBox()
 {
-	m_hWnd = NULL;
+	m_hWnd = nullptr;
 }
 
 void WindowsDialogBox::Run( int iDialog )
 {
 	char szFullAppPath[MAX_PATH];
-	GetModuleFileName( NULL, szFullAppPath, MAX_PATH );
+	GetModuleFileName( nullptr, szFullAppPath, MAX_PATH );
 	HINSTANCE hHandle = LoadLibrary( szFullAppPath );
 
-	DialogBoxParam( hHandle, MAKEINTRESOURCE(iDialog), NULL, DlgProc, (LPARAM) this );
+	DialogBoxParam( hHandle, MAKEINTRESOURCE(iDialog), nullptr, DlgProc, (LPARAM) this );
 }
 
-BOOL APIENTRY WindowsDialogBox::DlgProc( HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam )
+INT_PTR APIENTRY WindowsDialogBox::DlgProc( HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam )
 {
 	if( msg == WM_INITDIALOG )
 		SetProp( hDlg, "WindowsDialogBox", (HANDLE) lParam );
 
 	WindowsDialogBox *pThis = (WindowsDialogBox *) GetProp( hDlg, "WindowsDialogBox" );
-	if( pThis == NULL )
+	if( pThis == nullptr )
 		return FALSE;
 
-	if( pThis->m_hWnd == NULL )
+	if( pThis->m_hWnd == nullptr )
 		pThis->m_hWnd = hDlg;
 
 	return pThis->HandleMessage( msg, wParam, lParam );

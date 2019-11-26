@@ -188,3 +188,6 @@ BuildLog.htm
 *.swp
 *.pc
 *.d
+
+# JetBrains
+.idea/

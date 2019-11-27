@@ -2919,7 +2919,7 @@ void Player::HandleTapRowScore( unsigned row )
         UpdateTapNoteScores(track, tn);
     }
 
-	if( m_pPrimaryScoreKeeper != NULL )
+	if( m_pPrimaryScoreKeeper != nullptr )
 		m_pPrimaryScoreKeeper->HandleTapRowScore( m_NoteData, row );
 	if( m_pSecondaryScoreKeeper != nullptr )
 		m_pSecondaryScoreKeeper->HandleTapRowScore( m_NoteData, row );

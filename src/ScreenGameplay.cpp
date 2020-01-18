@@ -1688,11 +1688,30 @@ void ScreenGameplay::Update( float fDeltaTime )
 	}
 
 	if ( m_bWaitingForSyncStart ) {
+        m_fTimeWaiting += fDeltaTime;
+        if (GAMESTATE->IsCourseMode() && GAMESTATE->GetCourseSongIndex() > 0 && !m_bSongReadySent && m_fTimeWaiting > 10.0f) {
+            SYNCMAN->broadcastMarathonSongReady();
+            m_fTimeWaiting = 0;
+            m_bSongReadySent = true;
+        }
+        
+        
+
 		if (SYNCMAN->AttemptStart()) {
 			m_bWaitingForSyncStart = false;
 			SCREENMAN->HideSystemMessage();
 
-            StartPlayingSong(0, 0);
+			// do shit, copied from StartPlayingSong()
+			RageSoundParams p;
+			p.m_fSpeed = GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate;
+			p.StopMode = RageSoundParams::M_CONTINUE;
+			const float fFirstSecond = GAMESTATE->m_pCurSong->GetFirstSecond();
+			float fStartDelay = MIN_SECONDS_TO_STEP - fFirstSecond;
+			fStartDelay = max( fStartDelay, (float) MIN_SECONDS_TO_MUSIC );
+			p.m_StartSecond = -fStartDelay;
+			m_pSoundMusic->Play(false, &p);
+			UpdateSongPosition(0);
+			Screen::Update(0);
 
             // send initial score
 			FOREACH_EnabledPlayerInfo( m_vPlayerInfo, pi ) {
@@ -1700,7 +1719,7 @@ void ScreenGameplay::Update( float fDeltaTime )
 			}
 			return;
 		} else {
-			SCREENMAN->SystemMessageNoAnimate("Waiting for synchronized start - press START to begin on all machines!");
+            SCREENMAN->SystemMessageNoAnimate("Waiting for synchronized start - press START to begin on all machines!");
 			Screen::Update(0);
 			return;
 		}
@@ -2990,7 +3009,9 @@ void ScreenGameplay::HandleScreenMessage( const ScreenMessage SM )
 		SongFinished();
 
 		MESSAGEMAN->Broadcast( "ChangeCourseSongOut" );
-
+        SYNCMAN->broadcastMarathonSongLoading();
+        m_bSongReadySent = false;
+        m_fTimeWaiting = 0;
 		GAMESTATE->m_bLoadingNextSong = false;
 		LoadNextSong();
 

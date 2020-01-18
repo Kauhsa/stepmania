@@ -23,6 +23,7 @@ private:
 	bool waitingForSynchronizedStarting;
 	std::string activeSyncStartSong;
 	bool shouldStart;
+    int machinesLoadingNextSongCounter;
 
 	SyncStartScoreKeeper syncStartScoreKeeper;
 public:

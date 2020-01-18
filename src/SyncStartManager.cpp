@@ -94,6 +94,7 @@ SyncStartManager::SyncStartManager()
 
 	this->socketfd = -1;
 	this->enabled = false;
+    this->machinesLoadingNextSongCounter = 0;
 }
 
 SyncStartManager::~SyncStartManager()
@@ -304,7 +305,16 @@ void SyncStartManager::Update() {
 				}
 			} else if (opcode == SCORE) {
 				this->receiveScoreChange(remaddr.sin_addr, msg);
-			}
+            } else if (opcode == MARATHON_SONG_LOADING) {
+                this->machinesLoadingNextSongCounter++;
+                LOG->Info("MARATHON_SONG_LOADING, counter=%d", this->machinesLoadingNextSongCounter);
+            } else if (opcode == MARATHON_SONG_READY) {
+                this->machinesLoadingNextSongCounter--;
+                LOG->Info("MARATHON_SONG_READY, counter=%d", this->machinesLoadingNextSongCounter);
+                if (this->machinesLoadingNextSongCounter == 0) {
+                    this->shouldStart = true;
+                }
+            }
 		}
 	} while (received > 0);
 }
@@ -347,9 +357,13 @@ void SyncStartManager::StopListeningForSynchronizedStart() {
 }
 
 bool SyncStartManager::AttemptStart() {
-	bool shouldStart = this->shouldStart;
-	this->shouldStart = false;
-	return shouldStart;
+    if (this->shouldStart) {
+        this->machinesLoadingNextSongCounter = 0;
+        this->shouldStart = false;
+        return true;
+    } else {
+        return false;
+    }
 }
 
 void SyncStartManager::SongChangedDuringGameplay(const Song& song) {

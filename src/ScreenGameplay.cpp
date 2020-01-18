@@ -1720,7 +1720,7 @@ void ScreenGameplay::Update( float fDeltaTime )
 			return;
 		} else {
             if (GAMESTATE->IsCourseMode() && GAMESTATE->GetCourseSongIndex() > 0) {
-                SCREENMAN->SystemMessageNoAnimate("Waiting for other cabinets to finish");
+                SCREENMAN->SystemMessageNoAnimate("Wait...");
             } else {
                 SCREENMAN->SystemMessageNoAnimate("Waiting for synchronized start - press START to begin on all machines!");
             }

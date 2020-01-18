@@ -329,6 +329,7 @@ ScreenGameplay::ScreenGameplay()
 	m_bWaitingForSyncStart = false;
 	m_delaying_ready_announce= false;
 	GAMESTATE->m_AdjustTokensBySongCostForFinalStageCheck= false;
+    m_bSongReadySent = false;
 }
 
 void ScreenGameplay::Init()
@@ -1689,9 +1690,8 @@ void ScreenGameplay::Update( float fDeltaTime )
 
 	if ( m_bWaitingForSyncStart ) {
         m_fTimeWaiting += fDeltaTime;
-        if (GAMESTATE->IsCourseMode() && GAMESTATE->GetCourseSongIndex() > 0 && !m_bSongReadySent && m_fTimeWaiting > 10.0f) {
+        if (GAMESTATE->IsCourseMode() && GAMESTATE->GetCourseSongIndex() > 0 && !m_bSongReadySent && m_fTimeWaiting > 2.0f) {
             SYNCMAN->broadcastMarathonSongReady();
-            m_fTimeWaiting = 0;
             m_bSongReadySent = true;
         }
         
@@ -1719,8 +1719,12 @@ void ScreenGameplay::Update( float fDeltaTime )
 			}
 			return;
 		} else {
-            SCREENMAN->SystemMessageNoAnimate("Waiting for synchronized start - press START to begin on all machines!");
-			Screen::Update(0);
+            if (GAMESTATE->IsCourseMode() && GAMESTATE->GetCourseSongIndex() > 0) {
+                SCREENMAN->SystemMessageNoAnimate("Waiting for other cabinets to finish");
+            } else {
+                SCREENMAN->SystemMessageNoAnimate("Waiting for synchronized start - press START to begin on all machines!");
+            }
+            Screen::Update(0);
 			return;
 		}
 	}

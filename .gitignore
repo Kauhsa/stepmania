@@ -189,3 +189,7 @@ BuildLog.htm
 *.pc
 *.d
 .vscode/
+*.cbp
+
+# JetBrains
+.idea/

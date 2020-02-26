@@ -58,6 +58,8 @@ void PlayerStageStats::InternalInit()
 
 	ZERO( m_iTapNoteScores );
 	ZERO( m_iHoldNoteScores );
+	m_playerInputEvents.clear();
+	m_noteScoresWithBeatPosition.clear();
 	m_radarPossible.Zero();
 	m_radarActual.Zero();
 
@@ -103,6 +105,12 @@ void PlayerStageStats::AddStats( const PlayerStageStats& other )
 		m_iTapNoteScores[t] += other.m_iTapNoteScores[t];
 	for( int h=0; h<NUM_HoldNoteScore; h++ )
 		m_iHoldNoteScores[h] += other.m_iHoldNoteScores[h];
+
+    for(PlayerInputEvent *inputEvent : other.m_playerInputEvents)
+        m_playerInputEvents.push_back(inputEvent);
+    for(NoteScoreWithBeatPosition *ns : other.m_noteScoresWithBeatPosition)
+        m_noteScoresWithBeatPosition.push_back(ns);
+	
 	m_iCurCombo += other.m_iCurCombo;
 	m_iMaxCombo += other.m_iMaxCombo;
 	m_iCurMissCombo += other.m_iCurMissCombo;
